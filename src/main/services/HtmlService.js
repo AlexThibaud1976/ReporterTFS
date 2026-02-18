@@ -54,6 +54,63 @@ class HtmlService {
     const traceabilityJson = JSON.stringify(traceability)
     const bugDetailsJson = JSON.stringify(bugDetails)
 
+    // ── Matrice de traçabilité (server-side) ──────────────────────────────
+    const _resultsByName = new Map()
+    for (const r of results) {
+      const key = (r.testCaseName || '').trim().toLowerCase()
+      if (!_resultsByName.has(key)) _resultsByName.set(key, r)
+    }
+    const _tcToSuite = new Map()
+    for (const suite of suites) {
+      for (const tc of (suite.testCases || [])) {
+        _tcToSuite.set(Number(tc.id), suite.name)
+      }
+    }
+    const _reqMap = new Map()
+    for (const tc of traceability) {
+      for (const req of tc.requirements) {
+        if (!_reqMap.has(req.id)) _reqMap.set(req.id, { ...req, testCases: [] })
+        const entry = _reqMap.get(req.id)
+        if (!entry.testCases.find(t => t.id === tc.testCaseId)) {
+          const res = _resultsByName.get(tc.testCaseName.trim().toLowerCase())
+          entry.testCases.push({
+            id: tc.testCaseId,
+            name: tc.testCaseName,
+            outcome: res?.outcome || 'NotExecuted',
+            suiteName: _tcToSuite.get(tc.testCaseId) || '',
+          })
+        }
+      }
+    }
+    const reqMatrix = [..._reqMap.values()].map(req => {
+      const tests   = req.testCases.length
+      const passed  = req.testCases.filter(t => t.outcome === 'Passed').length
+      const failed  = req.testCases.filter(t => t.outcome === 'Failed').length
+      const blocked = req.testCases.filter(t => t.outcome === 'Blocked').length
+      const coverage = tests > 0 ? Math.round((passed / tests) * 100) : 0
+      return { ...req, tests, passed, failed, blocked, coverage }
+    })
+    const _totalLinked   = reqMatrix.reduce((s, r) => s + r.tests, 0)
+    const _totalPassed   = reqMatrix.reduce((s, r) => s + r.passed, 0)
+    const _testsLinked   = new Set(traceability.filter(t => t.requirements.length > 0).map(t => t.testCaseId)).size
+    const tracKpis = {
+      reqCovered:   reqMatrix.length,
+      testsLinked:  _testsLinked,
+      coverageRate: _totalLinked > 0 ? Math.round((_totalPassed / _totalLinked) * 100) : 0,
+      bugsCount:    bugDetails.length,
+    }
+    const bugMatrix = bugDetails.map(bug => {
+      let assoc = null
+      for (const r of results) {
+        if ((r.associatedBugs || []).some(b => String(b.id) === String(bug.id))) {
+          const te = traceability.find(t => t.testCaseName === r.testCaseName)
+          assoc = { id: te?.testCaseId, name: r.testCaseName }
+          break
+        }
+      }
+      return { ...bug, associatedTest: assoc }
+    })
+
     const metricsJson = JSON.stringify({
       labels: ['Réussis', 'Échoués', 'Bloqués', 'Non exécutés'],
       values: [metrics.passed, metrics.failed, metrics.blocked, metrics.notExecuted],
@@ -150,6 +207,34 @@ class HtmlService {
     .wi-badge a { color: inherit; text-decoration: none; }
     .wi-badge a:hover { text-decoration: underline; }
     .wi-state { font-size: 0.7rem; color: var(--overlay); font-style: italic; }
+
+    /* Traceability KPI gradient cards */
+    .trac-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .trac-kpi { border-radius: 12px; padding: 20px 16px; text-align: center; color: #fff; position: relative; overflow: hidden; }
+    .trac-kpi .tk-value { font-size: 2.2rem; font-weight: 800; line-height: 1.1; }
+    .trac-kpi .tk-label { font-size: 0.75rem; font-weight: 600; opacity: 0.9; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .trac-kpi-req     { background: linear-gradient(135deg, #5b6cde 0%, #8b5cf6 100%); }
+    .trac-kpi-tests   { background: linear-gradient(135deg, #d946a8 0%, #f472b6 100%); }
+    .trac-kpi-cover   { background: linear-gradient(135deg, #059669 0%, #34d399 100%); }
+    .trac-kpi-bugs    { background: linear-gradient(135deg, #dc2626 0%, #f87171 100%); }
+
+    /* Matrix table */
+    .matrix-expand-btn { background: none; border: 1px solid var(--surface1); border-radius: 4px; color: var(--subtext); cursor: pointer; padding: 2px 7px; font-size: 0.78rem; transition: all 0.15s; }
+    .matrix-expand-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .matrix-detail { background: rgba(137,180,250,0.04); }
+    .matrix-detail td { padding: 10px 16px 10px 40px !important; }
+    .tc-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .tc-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 16px; font-size: 0.78rem; border: 1px solid var(--surface1); background: var(--surface); }
+    .tc-pill-id { font-weight: 700; color: var(--blue); }
+    .tc-pill-name { color: var(--text); }
+    .tc-pill-suite { color: var(--overlay); font-style: italic; }
+    .coverage-bar { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; }
+    .coverage-bar .bar { flex: 1; height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden; }
+    .coverage-bar .fill { height: 100%; border-radius: 4px; }
+    .type-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: rgba(137,180,250,0.18); color: #89b4fa; }
+    .state-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(166,227,161,0.18); color: #a6e3a1; }
+    .sev-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: rgba(250,179,135,0.25); color: #fab387; }
+    .prio-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: rgba(249,226,175,0.25); color: #f9e2af; }
   </style>
 </head>
 <body>
@@ -281,64 +366,120 @@ class HtmlService {
   </div>
 
   <!-- TRAÇABILITÉ -->
-  ${traceability.length > 0 ? `
+  ${reqMatrix.length > 0 ? `
   <div class="section">
-    <div class="section-title">Traçabilité — Cas de test → Exigences</div>
+    <div class="section-title">📊 Matrice de Traçabilité — Requirements / User Stories</div>
+
+    <!-- KPI gradient cards -->
+    <div class="trac-kpi-row">
+      <div class="trac-kpi trac-kpi-req">
+        <div class="tk-value">${tracKpis.reqCovered}</div>
+        <div class="tk-label">Requirements Couverts</div>
+      </div>
+      <div class="trac-kpi trac-kpi-tests">
+        <div class="tk-value">${tracKpis.testsLinked}</div>
+        <div class="tk-label">Tests de Couverture</div>
+      </div>
+      <div class="trac-kpi trac-kpi-cover">
+        <div class="tk-value">${tracKpis.coverageRate}%</div>
+        <div class="tk-label">Taux de Couverture</div>
+      </div>
+      <div class="trac-kpi trac-kpi-bugs">
+        <div class="tk-value">${tracKpis.bugsCount}</div>
+        <div class="tk-label">Bugs Rattachés</div>
+      </div>
+    </div>
+
+    <!-- Matrix table -->
     <div class="table-scroll">
-      <table>
+      <table id="matrixTable">
         <thead>
           <tr>
-            <th>Cas de test</th>
-            <th>Exigences liées (US / Feature / Epic)</th>
+            <th style="width:32px"></th>
+            <th>ID</th>
+            <th>Titre</th>
+            <th>Type</th>
+            <th>État</th>
+            <th style="text-align:right">Tests</th>
+            <th style="text-align:right">✅ Passés</th>
+            <th style="text-align:right">❌ Échoués</th>
+            <th style="text-align:right">🚫 Bloqués</th>
+            <th style="min-width:120px">Couverture</th>
           </tr>
         </thead>
         <tbody>
-          ${traceability.map(tc => `
-          <tr>
-            <td style="font-weight:600">${this._esc(tc.testCaseName)}</td>
-            <td>${tc.requirements.length === 0
-              ? '<span style="color:var(--overlay);font-style:italic">Aucune exigence liée</span>'
-              : tc.requirements.map(req => {
-                  const epicPart = req.parent?.parent
-                    ? `<span class="wi-badge wi-epic">🏔 <a href="${this._esc(req.parent.parent.url)}" target="_blank" rel="noopener">#${req.parent.parent.id} ${this._esc(req.parent.parent.title)}</a></span><span class="chain-arrow">›</span>`
-                    : ''
-                  const featPart = req.parent
-                    ? `<span class="wi-badge wi-feature">🔷 <a href="${this._esc(req.parent.url)}" target="_blank" rel="noopener">#${req.parent.id} ${this._esc(req.parent.title)}</a></span><span class="chain-arrow">›</span>`
-                    : ''
-                  return `<div class="req-chain">${epicPart}${featPart}<span class="wi-badge wi-us">📋 <a href="${this._esc(req.url)}" target="_blank" rel="noopener">#${req.id} ${this._esc(req.title)}</a></span><span class="wi-state">${this._esc(req.state)}</span></div>`
-                }).join('')
-            }</td>
-          </tr>`).join('')}
+          ${reqMatrix.map((req, idx) => {
+            const pct = req.coverage
+            const barColor = pct >= 80 ? '#a6e3a1' : pct >= 50 ? '#f9e2af' : '#f38ba8'
+            const tcPills = req.testCases.map(tc =>
+              `<span class="tc-pill">
+                <span class="tc-pill-id">#${tc.id}</span>
+                <span class="tc-pill-name">${this._esc(tc.name)}</span>
+                ${tc.suiteName ? `<span class="tc-pill-suite">(Suite: ${this._esc(tc.suiteName)})</span>` : ''}
+                <span class="outcome-badge outcome-${tc.outcome || 'NotExecuted'}" style="font-size:0.65rem;padding:1px 6px">${tc.outcome || 'N/A'}</span>
+              </span>`
+            ).join('')
+            const parentChain = (() => {
+              const parts = []
+              if (req.parent?.parent) parts.push(`<span class="wi-badge wi-epic" style="font-size:0.72rem">🏔 <a href="${this._esc(req.parent.parent.url)}" target="_blank" rel="noopener">#${req.parent.parent.id}</a></span>`)
+              if (req.parent)         parts.push(`<span class="wi-badge wi-feature" style="font-size:0.72rem">🔷 <a href="${this._esc(req.parent.url)}" target="_blank" rel="noopener">#${req.parent.id}</a></span>`)
+              return parts.length ? parts.join('<span class="chain-arrow" style="font-size:0.8rem">›</span>') + '<span class="chain-arrow" style="font-size:0.8rem">›</span>' : ''
+            })()
+            return `
+          <tr class="matrix-row" onclick="toggleMatrixRow(${idx})" style="cursor:pointer">
+            <td style="text-align:center;color:var(--overlay)" id="matrix-arrow-${idx}">▶</td>
+            <td><a href="${this._esc(req.url)}" target="_blank" rel="noopener" style="color:#89b4fa;font-weight:700" onclick="event.stopPropagation()">#${req.id}</a></td>
+            <td><div style="display:flex;align-items:center;gap:6px">${parentChain}<span style="font-weight:600">${this._esc(req.title)}</span></div></td>
+            <td><span class="type-badge">${this._esc(req.type || 'User Story')}</span></td>
+            <td><span class="state-badge" style="background:rgba(166,227,161,0.18);color:#a6e3a1">${this._esc(req.state || '')}</span></td>
+            <td style="text-align:right;font-weight:700">${req.tests}</td>
+            <td style="text-align:right;color:#a6e3a1;font-weight:600">${req.passed}</td>
+            <td style="text-align:right;color:#f38ba8;font-weight:600">${req.failed}</td>
+            <td style="text-align:right;color:#f9e2af;font-weight:600">${req.blocked}</td>
+            <td><div class="coverage-bar"><div class="bar"><div class="fill" style="width:${pct}%;background:${barColor}"></div></div><span style="font-size:0.8rem;font-weight:700;color:${barColor};min-width:36px">${pct}%</span></div></td>
+          </tr>
+          <tr class="matrix-detail" id="matrix-detail-${idx}" style="display:none">
+            <td colspan="10">
+              <div style="font-size:0.78rem;color:var(--subtext);margin-bottom:6px;font-weight:600">Tests associés :</div>
+              <div class="tc-pills">${tcPills || '<span style="color:var(--overlay);font-style:italic">Aucun test associé</span>'}</div>
+            </td>
+          </tr>`
+          }).join('')}
         </tbody>
       </table>
     </div>
   </div>` : ''}
 
   <!-- BUGS -->
-  ${bugDetails.length > 0 ? `
+  ${bugMatrix.length > 0 ? `
   <div class="section">
-    <div class="section-title">Bugs liés (${bugDetails.length})</div>
+    <div class="section-title">🐛 Bugs Rattachés aux Tests (${bugMatrix.length})</div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>ID</th>
+            <th>Bug ID</th>
             <th>Titre</th>
-            <th>État</th>
             <th>Sévérité</th>
             <th>Priorité</th>
+            <th>État</th>
             <th>Assigné à</th>
+            <th>Test Associé</th>
           </tr>
         </thead>
         <tbody>
-          ${bugDetails.map(b => `
+          ${bugMatrix.map(b => `
           <tr>
-            <td><a href="${this._esc(b.url)}" target="_blank" rel="noopener" style="color:#f38ba8;font-weight:600">🐛 #${b.id}</a></td>
-            <td>${this._esc(b.title)}</td>
-            <td><span class="wi-state" style="font-size:0.8rem;color:var(--subtext);font-style:normal">${this._esc(b.state)}</span></td>
-            <td style="color:var(--subtext)">${this._esc(b.severity) || '—'}</td>
-            <td style="color:var(--subtext)">${b.priority || '—'}</td>
+            <td><a href="${this._esc(b.url)}" target="_blank" rel="noopener" style="color:#f38ba8;font-weight:700">#${b.id}</a></td>
+            <td style="font-weight:500">${this._esc(b.title)}</td>
+            <td>${b.severity ? `<span class="sev-badge">${this._esc(b.severity)}</span>` : '<span style="color:var(--overlay)">—</span>'}</td>
+            <td>${b.priority ? `<span class="prio-badge">P${b.priority}</span>` : '<span style="color:var(--overlay)">—</span>'}</td>
+            <td><span class="state-badge">${this._esc(b.state || '—')}</span></td>
             <td style="color:var(--subtext)">${this._esc(b.assignedTo) || '—'}</td>
+            <td>${b.associatedTest
+              ? `<span class="tc-pill"><span class="tc-pill-id">#${b.associatedTest.id || '?'}</span><span class="tc-pill-name">${this._esc(b.associatedTest.name)}</span></span>`
+              : '<span style="color:var(--overlay);font-style:italic">—</span>'
+            }</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -357,8 +498,19 @@ class HtmlService {
 // ─── Données ──────────────────────────────────────────────────────────
 const RESULTS = ${resultsJson};
 const METRICS = ${metricsJson};
+// Traceability raw data (available for custom use)
 const TRACEABILITY = ${traceabilityJson};
 const BUG_DETAILS = ${bugDetailsJson};
+
+// ─── Matrix expand/collapse ───────────────────────────────────────────
+function toggleMatrixRow(idx) {
+  const detail = document.getElementById('matrix-detail-' + idx);
+  const arrow  = document.getElementById('matrix-arrow-' + idx);
+  if (!detail) return;
+  const open = detail.style.display === 'table-row';
+  detail.style.display = open ? 'none' : 'table-row';
+  if (arrow) arrow.textContent = open ? '▶' : '▼';
+}
 
 // ─── Charts ───────────────────────────────────────────────────────────
 const donutCtx = document.getElementById('donutChart').getContext('2d');
