@@ -781,7 +781,13 @@ function TraceabilityMatrix({ planData }) {
                     <TableCell><Typography variant="body2" sx={{ color: palette.subtext0 }}>{bug.assignedTo || '—'}</Typography></TableCell>
                     <TableCell>
                       {bug.associatedTest
-                        ? <Chip label={bug.associatedTest.name} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.blue}22`, color: palette.blue, maxWidth: 200 }} />
+                        ? <Chip
+                            label={bug.associatedTest.id
+                              ? `#${bug.associatedTest.id}${bug.associatedTest.name ? ` ${bug.associatedTest.name}` : ''}`
+                              : (bug.associatedTest.name || '—')}
+                            size="small"
+                            sx={{ fontSize: '0.7rem', bgcolor: `${palette.blue}22`, color: palette.blue, maxWidth: 220 }}
+                          />
                         : <Typography variant="caption" sx={{ color: palette.overlay0 }}>—</Typography>
                       }
                     </TableCell>

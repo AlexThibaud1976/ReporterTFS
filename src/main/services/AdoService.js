@@ -372,27 +372,22 @@ class AdoService {
       }
     })
 
-    // ── 10. Bugs liés aux TCs via leurs relations WI (Related, Affects…) ─
-    // Les bugs créés manuellement depuis le TC apparaissent en "Related" sur le
-    // work item TC, PAS dans associatedBugs des résultats de run.
-    const TC_TO_BUG_RELS = [
-      'System.LinkTypes.Related',                    // Lien "Related" symétrique
-      'Microsoft.VSTS.Common.Affects-Forward',       // "Affects"
-      'Microsoft.VSTS.Common.Affects-Reverse',
-    ]
-    const relatedWiIds = [...new Set(
+    // ── 10. Bugs liés aux TCs via leurs relations WI ────────────────────
+    // Scan TOUTES les relations des TC WIs (pas seulement les types connus)
+    // pour ne pas rater des liens si la configuration ADO Server utilise
+    // des types de relation différents (Related, Affects, etc.).
+    const allTcRelatedIds = [...new Set(
       tcWorkItems.flatMap((wi) =>
         (wi.relations || [])
-          .filter((r) => TC_TO_BUG_RELS.includes(r.rel))
           .map((r) => parseInt(r.url.split('/').pop()))
-          .filter((id) => !isNaN(id) && id > 0)
+          .filter((id) => !isNaN(id) && id > 0 && !testCaseIds.includes(id)) // exclure les TCs eux-mêmes
       )
     )]
     // Fetch pour vérifier le type — on garde uniquement les Bugs
-    const relatedWorkItems = relatedWiIds.length > 0
-      ? await this._getWorkItemsBatch(relatedWiIds, 'none')
+    const allTcRelatedWIs = allTcRelatedIds.length > 0
+      ? await this._getWorkItemsBatch(allTcRelatedIds, 'none')
       : []
-    const relatedBugWIs = relatedWorkItems.filter(
+    const relatedBugWIs = allTcRelatedWIs.filter(
       (wi) => wi.fields?.['System.WorkItemType'] === 'Bug'
     )
 
@@ -423,14 +418,15 @@ class AdoService {
       }
     }
     // Compléter avec les bugs trouvés via les relations WI du TC
+    // On scanne TOUTES les relations (pas de filtre par type) pour être
+    // compatible avec toutes les versions de TFS/ADO Server.
     for (const tcWi of tcWorkItems) {
-      const linkedBugIds = (tcWi.relations || [])
-        .filter((r) => TC_TO_BUG_RELS.includes(r.rel))
+      const allLinkedIds = (tcWi.relations || [])
         .map((r) => parseInt(r.url.split('/').pop()))
         .filter((id) => !isNaN(id) && id > 0)
-      for (const bugId of linkedBugIds) {
-        if (allBugWIMap.has(bugId) && !bugToTestCase.has(bugId)) {
-          bugToTestCase.set(bugId, {
+      for (const linkedId of allLinkedIds) {
+        if (allBugWIMap.has(linkedId) && !bugToTestCase.has(linkedId)) {
+          bugToTestCase.set(linkedId, {
             id: tcWi.id,
             name: tcWi.fields?.['System.Title'] || `TC #${tcWi.id}`,
           })

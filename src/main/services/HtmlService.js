@@ -128,6 +128,11 @@ class HtmlService {
     tracKpis.bugsCount = Math.max(tracKpis.bugsCount, bugMatrixSource.length)
 
     const bugMatrix = bugMatrixSource.map(bug => {
+      // Priorité 1 : testCase déjà résolu par AdoService via relation WI
+      if (bug.testCase?.id || bug.testCase?.name) {
+        return { ...bug, associatedTest: bug.testCase }
+      }
+      // Priorité 2 : chercher dans les résultats de run
       let assoc = null
       for (const r of results) {
         if ((r.associatedBugs || []).some(b => String(b.id) === String(bug.id))) {
