@@ -651,13 +651,19 @@ function TraceabilityMatrix({ planData }) {
                               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                                 {req.testCases.length === 0 ? (
                                   <Typography variant="caption" sx={{ color: palette.overlay0, fontStyle: 'italic' }}>Aucun test associé</Typography>
-                                ) : req.testCases.map(tc => (
+                                ) : req.testCases.map(tc => {
+                                  const tcUrl = adoBaseUrl ? `${adoBaseUrl}/_workitems/edit/${tc.id}` : null
+                                  return (
                                   <Chip
                                     key={tc.id}
                                     size="small"
                                     label={
                                       <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Typography component="span" sx={{ fontSize: '0.72rem', fontWeight: 700, color: palette.blue }}>#{tc.id}</Typography>
+                                        <Typography
+                                          component="span"
+                                          onClick={(e) => { e.stopPropagation(); if (tcUrl) openLink(tcUrl) }}
+                                          sx={{ fontSize: '0.72rem', fontWeight: 700, color: palette.blue, cursor: tcUrl ? 'pointer' : 'default', '&:hover': tcUrl ? { textDecoration: 'underline' } : {} }}
+                                        >#{tc.id}</Typography>
                                         <Typography component="span" sx={{ fontSize: '0.72rem' }}>{tc.name}</Typography>
                                         {tc.suiteName && <Typography component="span" sx={{ fontSize: '0.68rem', color: palette.overlay0, fontStyle: 'italic' }}>(Suite: {tc.suiteName})</Typography>}
                                       </Box>
@@ -669,7 +675,8 @@ function TraceabilityMatrix({ planData }) {
                                       '& .MuiChip-label': { px: 1 },
                                     }}
                                   />
-                                ))}
+                                  )
+                                })}
                               </Box>
                             </Box>
                           </Collapse>

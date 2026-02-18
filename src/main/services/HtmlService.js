@@ -444,9 +444,13 @@ class HtmlService {
           ${reqMatrix.map((req, idx) => {
             const pct = req.coverage
             const barColor = pct >= 80 ? '#a6e3a1' : pct >= 50 ? '#f9e2af' : '#f38ba8'
+            const tcUrl = (id) => adoBaseUrl ? `${adoBaseUrl}/_workitems/edit/${id}` : null
             const tcPills = req.testCases.map(tc =>
               `<span class="tc-pill">
-                <span class="tc-pill-id">#${tc.id}</span>
+                ${tcUrl(tc.id)
+                  ? `<a href="${tcUrl(tc.id)}" target="_blank" rel="noopener" class="tc-pill-id" style="color:#89b4fa;text-decoration:none" title="Ouvrir dans ADO">#${tc.id}</a>`
+                  : `<span class="tc-pill-id">#${tc.id}</span>`
+                }
                 <span class="tc-pill-name">${this._esc(tc.name)}</span>
                 ${tc.suiteName ? `<span class="tc-pill-suite">(Suite: ${this._esc(tc.suiteName)})</span>` : ''}
                 <span class="outcome-badge outcome-${tc.outcome || 'NotExecuted'}" style="font-size:0.65rem;padding:1px 6px">${tc.outcome || 'N/A'}</span>

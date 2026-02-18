@@ -586,6 +586,12 @@ class AdoService {
       console.warn('[AdoService] Traçabilité ignorée :', err.message)
     }
 
+    // Mettre à jour bugsCount avec le total réel (inclut les bugs liés via relation WI)
+    if (bugDetails.length > metrics.bugsCount) {
+      metrics.bugsCount = bugDetails.length
+      metrics.bugIds = bugDetails.map((b) => b.id)
+    }
+
     // Pièces jointes (optionnel, peut être long)
     let attachments = []
     if (options.includeAttachments) {
