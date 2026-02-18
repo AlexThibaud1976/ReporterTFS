@@ -23,7 +23,7 @@ export const adoApi = {
   getTestRuns: (project, planId) => api.ado.getTestRuns(project, planId),
   getTestResults: (project, runId) => api.ado.getTestResults(project, runId),
   getWorkItem: (project, id) => api.ado.getWorkItem(project, id),
-  getFullPlanData: (project, planId) => api.ado.getFullPlanData(project, planId),
+  getFullPlanData: (project, planId, options) => api.ado.getFullPlanData(project, planId, options),
 }
 
 // ─── EXPORT ────────────────────────────────────────────────────────────────

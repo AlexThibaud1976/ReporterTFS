@@ -495,22 +495,25 @@ function TraceabilityMatrix({ planData }) {
             severity: b.severity || '', priority: b.priority || '',
             assignedTo: b.assignedTo || '',
             url: b.url || (adoBaseUrl ? `${adoBaseUrl}/_workitems/edit/${b.id}` : ''),
-            _testName: r.testCaseName,
+            testCase: { name: r.testCaseName },
           })
         }
       }
     }
   }
-  const bugMatrix = bugList.map(bug => {
-    if (bug._testName) return { ...bug, associatedTest: { name: bug._testName } }
-    let assoc = null
-    for (const r of results) {
-      if ((r.associatedBugs || []).some(b => String(b.id) === String(bug.id))) {
-        assoc = { name: r.testCaseName }; break
+  // Carte inverse bug→testCase depuis enrichedResults (pour les bugDetails sans testCase)
+  const bugTestCaseMap = new Map()
+  for (const r of results) {
+    for (const b of (r.associatedBugs || [])) {
+      if (!bugTestCaseMap.has(String(b.id))) {
+        bugTestCaseMap.set(String(b.id), { id: r.testCaseId, name: r.testCaseName })
       }
     }
-    return { ...bug, associatedTest: assoc }
-  })
+  }
+  const bugMatrix = bugList.map(bug => ({
+    ...bug,
+    associatedTest: bug.testCase || bugTestCaseMap.get(String(bug.id)) || null,
+  }))
 
   const openLink = (url) => { if (url) window.open(url, '_blank') }
 

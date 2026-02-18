@@ -27,6 +27,7 @@ class HtmlService {
     const suites = planData.suites || []
     const traceability = planData.traceability || []
     const bugDetails = planData.bugDetails || []
+    const attachments = planData.attachments || []
     const traceabilityError = planData.traceabilityError || null
     const adoBaseUrl = planData.adoBaseUrl || ''
     const generatedAt = new Date().toLocaleString('fr-FR')
@@ -518,6 +519,9 @@ class HtmlService {
     </div>
   </div>` : ''}
 
+  <!-- PIÈCES JOINTES -->
+  ${this._generateAttachmentsSection(attachments)}
+
   <!-- FOOTER -->
   <div class="footer">
     Rapport généré par <span class="tfs-badge">TFSReporter</span> le ${generatedAt}
@@ -652,6 +656,70 @@ renderTable(RESULTS);
 </script>
 </body>
 </html>`
+  }
+
+  // ─── SECTION PIÈCES JOINTES ───────────────────────────────────────
+
+  _generateAttachmentsSection(attachments) {
+    if (!attachments || attachments.length === 0) return ''
+    const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp'])
+    const images = attachments.filter(a => IMAGE_EXTS.has((a.fileName || '').toLowerCase().split('.').pop()))
+    const others = attachments.filter(a => !IMAGE_EXTS.has((a.fileName || '').toLowerCase().split('.').pop()))
+    const formatSize = (b) => {
+      if (!b) return ''
+      if (b < 1024) return b + ' B'
+      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'
+      return (b / 1048576).toFixed(1) + ' MB'
+    }
+    return `
+  <div class="section" style="page-break-before: always">
+    <div class="section-title">📎 Pièces Jointes (${attachments.length})</div>
+
+    ${images.length > 0 ? `
+    <div style="margin-bottom:24px">
+      <div style="font-weight:600;color:var(--blue);margin-bottom:12px">🖼️ Captures d'écran (${images.length})</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:16px">
+        ${images.map(img => `
+        <div style="background:var(--mantle);border-radius:8px;overflow:hidden;border:1px solid var(--surface)">
+          <div style="padding:8px 12px;background:var(--surface);font-size:0.8rem;color:var(--subtext)">
+            <strong>${this._esc(img.fileName)}</strong>
+            ${img.testCaseName ? ` — Test : ${this._esc(img.testCaseName)}` : ''}
+            ${img.runName ? ` <span style="color:var(--overlay)">(${this._esc(img.runName)})</span>` : ''}
+          </div>
+          ${img.base64
+            ? `<img src="data:image/${(img.fileName.split('.').pop() || 'png')};base64,${img.base64}" style="width:100%;display:block" alt="${this._esc(img.fileName)}">`
+            : `<div style="padding:24px;text-align:center;color:var(--overlay);font-style:italic">Image non disponible</div>`
+          }
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${others.length > 0 ? `
+    <div>
+      <div style="font-weight:600;color:var(--blue);margin-bottom:12px">📄 Autres fichiers (${others.length})</div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Fichier</th>
+              <th>Test associé</th>
+              <th>Run</th>
+              <th style="text-align:right">Taille</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${others.map(f => `
+            <tr>
+              <td>📄 ${this._esc(f.fileName)}</td>
+              <td style="color:var(--subtext)">${this._esc(f.testCaseName) || '—'}</td>
+              <td style="color:var(--overlay)">${this._esc(f.runName) || '—'}</td>
+              <td style="text-align:right;color:var(--overlay)">${formatSize(f.size)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  </div>`
   }
 
   _metaItem(label, value) {

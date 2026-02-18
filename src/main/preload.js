@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTestRuns: (project, planId) => ipcRenderer.invoke('ado:getTestRuns', project, planId),
     getTestResults: (project, runId) => ipcRenderer.invoke('ado:getTestResults', project, runId),
     getWorkItem: (project, id) => ipcRenderer.invoke('ado:getWorkItem', project, id),
-    getFullPlanData: (project, planId) => ipcRenderer.invoke('ado:getFullPlanData', project, planId),
+    getFullPlanData: (project, planId, options) => ipcRenderer.invoke('ado:getFullPlanData', project, planId, options),
   },
 
   // ─── Exports ──────────────────────────────────────────────────────────

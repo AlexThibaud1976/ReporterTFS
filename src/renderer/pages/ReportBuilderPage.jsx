@@ -3,11 +3,12 @@ import {
   Box, Typography, Card, CardContent, TextField, Button,
   Grid, MenuItem, Select, FormControl, InputLabel, Stepper,
   Step, StepLabel, Alert, CircularProgress, Divider, Chip,
+  FormControlLabel, Switch, Tooltip,
 } from '@mui/material'
 import { DatePicker } from '@mui/x-date-pickers'
 import {
   PictureAsPdf, TableChart, Slideshow, Code,
-  Check, ArrowBack, ArrowForward,
+  Check, ArrowBack, ArrowForward, AttachFile,
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
 import { useAdoStore } from '../store/adoStore'
@@ -27,11 +28,12 @@ const GLOBAL_STATUS = ['Réussi', 'Échoué', 'En cours', 'Annulé']
 
 export default function ReportBuilderPage() {
   const { metadata, updateMetadata, validateMetadata, exportProgress, setExportProgress, resetExportProgress } = useReportStore()
-  const { fullPlanData } = useAdoStore()
+  const { fullPlanData, selectedProject, selectedPlan } = useAdoStore()
 
   const [activeStep, setActiveStep] = useState(0)
   const [selectedFormats, setSelectedFormats] = useState(['pdf'])
   const [validationError, setValidationError] = useState(null)
+  const [includeAttachments, setIncludeAttachments] = useState(false)
 
   const handleFormatToggle = (id) => {
     setSelectedFormats((prev) =>
@@ -58,7 +60,22 @@ export default function ReportBuilderPage() {
 
     setExportProgress({ isExporting: true, progress: 0, error: null })
 
-    const reportData = { metadata, planData: fullPlanData }
+    // Si des pièces jointes sont demandées, refaire un appel enrichi
+    let planDataToUse = fullPlanData
+    if (includeAttachments && selectedProject && selectedPlan) {
+      setExportProgress({ isExporting: true, step: 'Récupération des pièces jointes...', progress: 5 })
+      try {
+        planDataToUse = await adoApi.getFullPlanData(
+          selectedProject.name,
+          selectedPlan.id,
+          { includeAttachments: true }
+        )
+      } catch (_) {
+        // On continue avec les données existantes si l'appel échoue
+      }
+    }
+
+    const reportData = { metadata, planData: planDataToUse }
     const results = []
 
     for (let i = 0; i < selectedFormats.length; i++) {
@@ -232,6 +249,27 @@ export default function ReportBuilderPage() {
               )
             })}
           </Grid>
+
+          {/* Option pièces jointes */}
+          <Card sx={{ mt: 2, border: `1px solid ${includeAttachments ? palette.blue : palette.surface0}` }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <AttachFile sx={{ color: palette.blue, fontSize: 20 }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>Pièces jointes</Typography>
+                  <Typography variant="caption" sx={{ color: palette.overlay0 }}>
+                    Intègre les captures d'écran et fichiers des résultats de test dans le rapport HTML.
+                    Un appel supplémentaire à l'API ADO sera effectué lors de la génération.
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={includeAttachments}
+                  onChange={(e) => setIncludeAttachments(e.target.checked)}
+                  color="primary"
+                />
+              </Box>
+            </CardContent>
+          </Card>
         </Box>
       )}
 

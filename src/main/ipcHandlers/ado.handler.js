@@ -32,8 +32,8 @@ function register(ipcMain) {
     return adoService.getWorkItem(project, id)
   })
 
-  ipcMain.handle('ado:getFullPlanData', async (_, project, planId) => {
-    return adoService.getFullPlanData(project, planId)
+  ipcMain.handle('ado:getFullPlanData', async (_, project, planId, options = {}) => {
+    return adoService.getFullPlanData(project, planId, options)
   })
 }
 

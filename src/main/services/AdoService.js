@@ -167,27 +167,18 @@ class AdoService {
       if (skip >= 5000) break
     }
 
-    // Deuxième passe : récupère les bugs associés (WorkItems) par petits lots
-    // detailsToInclude=WorkItems peut imposer une limite plus stricte → on pagine à 50
-    const BUG_PAGE = 50
+    // Deuxième passe : bugs associés — requête UNIQUE sans $skip (compatible toutes versions ADO Server).
+    // $skip + detailsToInclude=WorkItems est instable sur certaines versions TFS/ADO on-premise.
     const bugsByResultId = new Map()
     try {
-      let bugSkip = 0
-      while (true) {
-        const bugData = await this._get(`${project}/_apis/test/runs/${runId}/results`, {
-          $top: BUG_PAGE,
-          $skip: bugSkip,
-          detailsToInclude: 'WorkItems',
-        })
-        const bugPage = bugData.value || []
-        for (const br of bugPage) {
-          if (br.associatedBugs?.length > 0) {
-            bugsByResultId.set(br.id, br.associatedBugs)
-          }
+      const bugData = await this._get(`${project}/_apis/test/runs/${runId}/results`, {
+        $top: 1000,
+        detailsToInclude: 'WorkItems',
+      })
+      for (const br of (bugData.value || [])) {
+        if (br.associatedBugs?.length > 0) {
+          bugsByResultId.set(br.id, br.associatedBugs)
         }
-        if (bugPage.length < BUG_PAGE) break
-        bugSkip += BUG_PAGE
-        if (bugSkip >= 5000) break
       }
     } catch (_) {
       // Si l'API ne supporte pas detailsToInclude, on continue sans bugs
@@ -381,25 +372,42 @@ class AdoService {
       }
     })
 
-    // ── 10. Bug details : fetch les WI bugs pour titre/état/sévérité ──
+    // ── 10. Enrichir les résultats avec détails bugs ─────────────────
     const bugIds = [...new Set(
       results.flatMap((r) =>
         (r.associatedBugs || []).map((b) => Number(b.id)).filter((id) => !isNaN(id) && id > 0)
       )
     )]
     const bugWorkItems = bugIds.length > 0 ? await this._getWorkItemsBatch(bugIds, 'none') : []
-    const bugDetails = bugWorkItems.map((wi) => ({
-      id: wi.id,
-      title: wi.fields?.['System.Title'] || `Bug #${wi.id}`,
-      state: wi.fields?.['System.State'] || '',
-      severity: wi.fields?.['Microsoft.VSTS.Common.Severity'] || '',
-      priority: wi.fields?.['Microsoft.VSTS.Common.Priority'] || '',
-      assignedTo: wi.fields?.['System.AssignedTo']?.displayName || '',
-      url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
-    }))
+
+    // Carte inverse bug→testCase (depuis les résultats enrichis)
+    const bugToTestCase = new Map()
+    for (const r of results) {
+      for (const b of (r.associatedBugs || [])) {
+        const bid = Number(b.id)
+        if (!bugToTestCase.has(bid)) {
+          bugToTestCase.set(bid, { id: r.testCaseId, name: r.testCaseName })
+        }
+      }
+    }
+
+    const bugDetailMap = new Map()
+    const bugDetails = bugWorkItems.map((wi) => {
+      const detail = {
+        id: wi.id,
+        title: wi.fields?.['System.Title'] || `Bug #${wi.id}`,
+        state: wi.fields?.['System.State'] || '',
+        severity: wi.fields?.['Microsoft.VSTS.Common.Severity'] || '',
+        priority: wi.fields?.['Microsoft.VSTS.Common.Priority'] || '',
+        assignedTo: wi.fields?.['System.AssignedTo']?.displayName || '',
+        url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
+        testCase: bugToTestCase.get(wi.id) || null,   // ← association TC directe
+      }
+      bugDetailMap.set(wi.id, detail)
+      return detail
+    })
 
     // ── 11. Enrichir les résultats avec détails bugs + URLs ────────────
-    const bugDetailMap = new Map(bugDetails.map((b) => [b.id, b]))
     const enrichedResults = results.map((r) => ({
       ...r,
       associatedBugs: (r.associatedBugs || []).map((b) => ({
@@ -413,13 +421,83 @@ class AdoService {
 
   // ─── EXTRACTION COMPLÈTE ────────────────────────────────────────────────
 
+  // ─── PIÈCES JOINTES ────────────────────────────────────────────────────
+
+  /**
+   * Liste les pièces jointes d'un résultat de test
+   */
+  async getTestAttachments(project, runId, resultId) {
+    try {
+      const data = await this._get(
+        `${project}/_apis/test/runs/${runId}/results/${resultId}/attachments`
+      )
+      return (data.value || []).map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        size: a.size,
+        url: a.url,
+      }))
+    } catch (_) {
+      return []
+    }
+  }
+
+  /**
+   * Télécharge une pièce jointe et la renvoie en base64
+   * @private
+   */
+  async _downloadAttachment(url) {
+    const headers = authService.buildAuthHeaders()
+    const response = await axios.get(url, {
+      headers,
+      httpsAgent,
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    })
+    return Buffer.from(response.data).toString('base64')
+  }
+
+  /**
+   * Récupère toutes les pièces jointes du dernier run, avec base64 pour les images
+   * @private
+   */
+  async _buildAttachments(project, latestRun, enrichedResults) {
+    if (!latestRun) return []
+    const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'svg', 'webp'])
+    const attachments = []
+    for (const result of enrichedResults) {
+      if (!result.id) continue
+      const files = await this.getTestAttachments(project, latestRun.id, result.id)
+      for (const file of files) {
+        const ext = (file.fileName || '').toLowerCase().split('.').pop()
+        let base64 = null
+        if (IMAGE_EXTS.has(ext) && file.url) {
+          try { base64 = await this._downloadAttachment(file.url) } catch (_) {}
+        }
+        attachments.push({
+          id: file.id,
+          fileName: file.fileName,
+          size: file.size,
+          base64,
+          testCaseName: result.testCaseName,
+          testCaseId: result.testCaseId,
+          runName: latestRun.name,
+        })
+      }
+    }
+    return attachments
+  }
+
+  // ─── EXTRACTION COMPLÈTE ────────────────────────────────────────────────
+
   /**
    * Extrait toutes les données d'un plan de test (opération lourde)
    * Retourne un objet structuré avec tout ce qu'il faut pour générer le rapport
    * @param {string} project
    * @param {number} planId
+   * @param {object} options - { includeAttachments: boolean }
    */
-  async getFullPlanData(project, planId) {
+  async getFullPlanData(project, planId, options = {}) {
     const plans = await this.getTestPlans(project)
     const plan = plans.find((p) => p.id === parseInt(planId))
     if (!plan) throw new Error('Plan de test ' + planId + ' introuvable')
@@ -460,6 +538,16 @@ class AdoService {
       console.warn('[AdoService] Traçabilité ignorée :', err.message)
     }
 
+    // Pièces jointes (optionnel, peut être long)
+    let attachments = []
+    if (options.includeAttachments) {
+      try {
+        attachments = await this._buildAttachments(project, latestRun, enrichedResults)
+      } catch (err) {
+        console.warn('[AdoService] Pièces jointes ignorées :', err.message)
+      }
+    }
+
     return {
       plan,
       suites: suitesWithCases,
@@ -471,6 +559,7 @@ class AdoService {
       metrics,
       traceability,
       bugDetails,
+      attachments,
       adoBaseUrl: authService.getBaseUrl(),
       project,
       traceabilityError,
