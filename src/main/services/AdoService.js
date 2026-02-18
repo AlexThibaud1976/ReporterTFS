@@ -372,15 +372,47 @@ class AdoService {
       }
     })
 
-    // ── 10. Enrichir les résultats avec détails bugs ─────────────────
-    const bugIds = [...new Set(
+    // ── 10. Bugs liés aux TCs via leurs relations WI (Related, Affects…) ─
+    // Les bugs créés manuellement depuis le TC apparaissent en "Related" sur le
+    // work item TC, PAS dans associatedBugs des résultats de run.
+    const TC_TO_BUG_RELS = [
+      'System.LinkTypes.Related',                    // Lien "Related" symétrique
+      'Microsoft.VSTS.Common.Affects-Forward',       // "Affects"
+      'Microsoft.VSTS.Common.Affects-Reverse',
+    ]
+    const relatedWiIds = [...new Set(
+      tcWorkItems.flatMap((wi) =>
+        (wi.relations || [])
+          .filter((r) => TC_TO_BUG_RELS.includes(r.rel))
+          .map((r) => parseInt(r.url.split('/').pop()))
+          .filter((id) => !isNaN(id) && id > 0)
+      )
+    )]
+    // Fetch pour vérifier le type — on garde uniquement les Bugs
+    const relatedWorkItems = relatedWiIds.length > 0
+      ? await this._getWorkItemsBatch(relatedWiIds, 'none')
+      : []
+    const relatedBugWIs = relatedWorkItems.filter(
+      (wi) => wi.fields?.['System.WorkItemType'] === 'Bug'
+    )
+
+    // ── 11. Bugs depuis les résultats de run ───────────────────────────
+    const runBugIds = [...new Set(
       results.flatMap((r) =>
         (r.associatedBugs || []).map((b) => Number(b.id)).filter((id) => !isNaN(id) && id > 0)
       )
     )]
-    const bugWorkItems = bugIds.length > 0 ? await this._getWorkItemsBatch(bugIds, 'none') : []
+    const runBugWorkItems = runBugIds.length > 0
+      ? await this._getWorkItemsBatch(runBugIds, 'none')
+      : []
 
-    // Carte inverse bug→testCase (depuis les résultats enrichis)
+    // ── 12. Fusionner les deux sources de bugs (run + relations WI) ────
+    const allBugWIMap = new Map()
+    for (const wi of [...runBugWorkItems, ...relatedBugWIs]) {
+      allBugWIMap.set(wi.id, wi)  // la dedup se fait naturellement
+    }
+
+    // Carte inverse bug→testCase depuis les résultats de run
     const bugToTestCase = new Map()
     for (const r of results) {
       for (const b of (r.associatedBugs || [])) {
@@ -390,9 +422,24 @@ class AdoService {
         }
       }
     }
+    // Compléter avec les bugs trouvés via les relations WI du TC
+    for (const tcWi of tcWorkItems) {
+      const linkedBugIds = (tcWi.relations || [])
+        .filter((r) => TC_TO_BUG_RELS.includes(r.rel))
+        .map((r) => parseInt(r.url.split('/').pop()))
+        .filter((id) => !isNaN(id) && id > 0)
+      for (const bugId of linkedBugIds) {
+        if (allBugWIMap.has(bugId) && !bugToTestCase.has(bugId)) {
+          bugToTestCase.set(bugId, {
+            id: tcWi.id,
+            name: tcWi.fields?.['System.Title'] || `TC #${tcWi.id}`,
+          })
+        }
+      }
+    }
 
     const bugDetailMap = new Map()
-    const bugDetails = bugWorkItems.map((wi) => {
+    const bugDetails = [...allBugWIMap.values()].map((wi) => {
       const detail = {
         id: wi.id,
         title: wi.fields?.['System.Title'] || `Bug #${wi.id}`,
@@ -400,14 +447,15 @@ class AdoService {
         severity: wi.fields?.['Microsoft.VSTS.Common.Severity'] || '',
         priority: wi.fields?.['Microsoft.VSTS.Common.Priority'] || '',
         assignedTo: wi.fields?.['System.AssignedTo']?.displayName || '',
-        url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
-        testCase: bugToTestCase.get(wi.id) || null,   // ← association TC directe
+        url: wi._links?.html?.href
+          || `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
+        testCase: bugToTestCase.get(wi.id) || null,
       }
       bugDetailMap.set(wi.id, detail)
       return detail
     })
 
-    // ── 11. Enrichir les résultats avec détails bugs + URLs ────────────
+    // ── 13. Enrichir les résultats avec détails bugs + URLs ────────────
     const enrichedResults = results.map((r) => ({
       ...r,
       associatedBugs: (r.associatedBugs || []).map((b) => ({
