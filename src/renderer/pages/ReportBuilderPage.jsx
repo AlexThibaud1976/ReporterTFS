@@ -12,7 +12,7 @@ import {
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
 import { useAdoStore } from '../store/adoStore'
-import { exportApi, reportHistoryApi } from '../api/ipcApi'
+import { exportApi, reportHistoryApi, adoApi } from '../api/ipcApi'
 import { palette } from '../theme/theme'
 
 const STEPS = ['Métadonnées', 'Format d\'export', 'Génération']
@@ -28,7 +28,7 @@ const GLOBAL_STATUS = ['Réussi', 'Échoué', 'En cours', 'Annulé']
 
 export default function ReportBuilderPage() {
   const { metadata, updateMetadata, validateMetadata, exportProgress, setExportProgress, resetExportProgress } = useReportStore()
-  const { fullPlanData, selectedProject, selectedPlan } = useAdoStore()
+  const { fullPlanData, selectedProject, selectedPlan, selectedSuiteIds } = useAdoStore()
 
   const [activeStep, setActiveStep] = useState(0)
   const [selectedFormats, setSelectedFormats] = useState(['pdf'])
@@ -65,10 +65,12 @@ export default function ReportBuilderPage() {
     if (includeAttachments && selectedProject && selectedPlan) {
       setExportProgress({ isExporting: true, step: 'Récupération des pièces jointes...', progress: 5 })
       try {
+        const opts = { includeAttachments: true }
+        if (selectedSuiteIds && selectedSuiteIds.length > 0) opts.suiteIds = selectedSuiteIds
         planDataToUse = await adoApi.getFullPlanData(
           selectedProject.name,
           selectedPlan.id,
-          { includeAttachments: true }
+          opts
         )
       } catch (_) {
         // On continue avec les données existantes si l'appel échoue

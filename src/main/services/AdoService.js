@@ -543,32 +543,50 @@ class AdoService {
    * Retourne un objet structuré avec tout ce qu'il faut pour générer le rapport
    * @param {string} project
    * @param {number} planId
-   * @param {object} options - { includeAttachments: boolean }
+   * @param {object} options - { includeAttachments: boolean, suiteIds: number[] }
    */
   async getFullPlanData(project, planId, options = {}) {
+    const { includeAttachments = false, suiteIds: filterSuiteIds = [] } = options
+
     const plans = await this.getTestPlans(project)
     const plan = plans.find((p) => p.id === parseInt(planId))
     if (!plan) throw new Error('Plan de test ' + planId + ' introuvable')
 
     const suites = await this.getTestSuites(project, planId)
+
+    // Si un filtre de suites est actif, ne charger les TCs que pour les suites sélectionnées
+    const normalizedFilter = filterSuiteIds.map(Number)
+    const suitesToLoad = normalizedFilter.length > 0
+      ? suites.filter(s => normalizedFilter.includes(Number(s.id)))
+      : suites
+
     const suitesWithCases = await Promise.all(
-      suites.map(async (suite) => {
+      suitesToLoad.map(async (suite) => {
         const testCases = await this.getTestCases(project, planId, suite.id)
         return { ...suite, testCases }
       })
     )
+
+    // Ensemble des IDs de cas de test dans le périmètre (null = tous)
+    const scopedTcIds = normalizedFilter.length > 0
+      ? new Set(suitesWithCases.flatMap(s => (s.testCases || []).map(tc => String(tc.id))))
+      : null
 
     const runs = await this.getTestRuns(project, planId)
     const latestRun = runs[0]
 
     let results = []
     if (latestRun) {
-      results = await this.getTestResults(project, latestRun.id)
+      const allResults = await this.getTestResults(project, latestRun.id)
+      // Limiter les résultats au périmètre des suites sélectionnées
+      results = scopedTcIds
+        ? allResults.filter(r => scopedTcIds.has(String(r.testCaseId)))
+        : allResults
     }
 
     const history = await this._buildHistory(project, runs.slice(0, 10))
     const suiteMetrics = this._computeSuiteMetrics(results, suitesWithCases)
-    const metrics = this._computeMetrics(results, suites, suitesWithCases)
+    const metrics = this._computeMetrics(results, suitesWithCases, suitesWithCases)
 
     // Traçabilité : on l'essaie séparément pour ne pas bloquer le rapport en
     // cas de permissions insuffisantes sur l'API work items.
@@ -594,7 +612,7 @@ class AdoService {
 
     // Pièces jointes (optionnel, peut être long)
     let attachments = []
-    if (options.includeAttachments) {
+    if (includeAttachments) {
       try {
         attachments = await this._buildAttachments(project, latestRun, enrichedResults)
       } catch (err) {
@@ -605,6 +623,8 @@ class AdoService {
     return {
       plan,
       suites: suitesWithCases,
+      allSuites: suites,           // métadonnées de toutes les suites du plan (sans TCs)
+      filteredSuiteIds: normalizedFilter.length > 0 ? normalizedFilter : null,
       suiteMetrics,
       runs,
       latestRun,

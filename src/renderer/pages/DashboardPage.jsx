@@ -5,12 +5,12 @@ import {
   Button, LinearProgress, Alert, CircularProgress,
   Select, MenuItem, FormControl, InputLabel, Table,
   TableBody, TableCell, TableHead, TableRow, Chip,
-  Collapse, IconButton, Tooltip,
+  Collapse, IconButton, Tooltip, Checkbox, ListItemText, OutlinedInput,
 } from '@mui/material'
 import {
   Add, FolderOpen, Assessment, CheckCircle, Cancel, Block,
   HourglassEmpty, Warning, TrendingUp, KeyboardArrowDown, KeyboardArrowRight,
-  AccountTree, BugReport, Link as LinkIcon,
+  AccountTree, BugReport, Link as LinkIcon, FilterList,
 } from '@mui/icons-material'
 import { useAdoStore } from '../store/adoStore'
 import { useAuthStore } from '../store/authStore'
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const { activeConnection } = useAuthStore()
   const {
     projects, selectedProject, testPlans, selectedPlan, fullPlanData,
+    availableSuites, selectedSuiteIds, setSuiteFilter,
     isLoading, loadingStep, error,
     loadProjects, selectProject, selectPlan, extractFullPlanData,
   } = useAdoStore()
@@ -84,6 +85,43 @@ export default function DashboardPage() {
           </Select>
         </FormControl>
 
+        {/* Suite filter — visible seulement si le plan a des suites */}
+        {availableSuites.length > 0 && (
+          <Tooltip title={selectedSuiteIds.length > 0 ? `Filtre actif : ${selectedSuiteIds.length} suite(s)` : 'Toutes les suites incluses'} arrow>
+            <FormControl size="small" sx={{ minWidth: 260 }}>
+              <InputLabel shrink sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FilterList sx={{ fontSize: 14 }} /> Périmètre suites
+              </InputLabel>
+              <Select
+                multiple
+                displayEmpty
+                value={selectedSuiteIds}
+                onChange={(e) => setSuiteFilter(e.target.value)}
+                input={<OutlinedInput notched label="Périmètre suites" />}
+                renderValue={(selected) =>
+                  selected.length === 0
+                    ? <Typography variant="caption" sx={{ color: palette.overlay0, fontStyle: 'italic' }}>Toutes les suites ({availableSuites.length})</Typography>
+                    : <Typography variant="caption">{selected.length} suite{selected.length > 1 ? 's' : ''} sélectionnée{selected.length > 1 ? 's' : ''}</Typography>
+                }
+                disabled={isLoading}
+                sx={{ '& .MuiSelect-select': { py: 1 } }}
+              >
+                {availableSuites.map(s => (
+                  <MenuItem key={s.id} value={s.id} dense>
+                    <Checkbox size="small" checked={selectedSuiteIds.includes(s.id)} sx={{ py: 0.5 }} />
+                    <ListItemText
+                      primary={s.name}
+                      secondary={s.testCaseCount != null ? `${s.testCaseCount} cas` : undefined}
+                      primaryTypographyProps={{ variant: 'body2' }}
+                      secondaryTypographyProps={{ variant: 'caption' }}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Tooltip>
+        )}
+
         <Button variant="outlined" startIcon={isLoading ? <CircularProgress size={16} /> : <Assessment />}
           onClick={extractFullPlanData} disabled={!selectedPlan || isLoading}>
           Analyser
@@ -121,7 +159,7 @@ export default function DashboardPage() {
               <LinearProgress variant="determinate" value={metrics.passRate}
                 sx={{ height: 10, '& .MuiLinearProgress-bar': { backgroundColor: metrics.passRate >= 80 ? palette.green : palette.red } }}
               />
-              <Box sx={{ display: 'flex', gap: 3, mt: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 3, mt: 2, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 {[
                   { label: 'Plan', value: fullPlanData.plan?.name },
                   { label: 'Suites', value: metrics.suitesCount },
@@ -133,6 +171,17 @@ export default function DashboardPage() {
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>{value}</Typography>
                   </Box>
                 ))}
+                {fullPlanData.filteredSuiteIds && (
+                  <Box>
+                    <Typography variant="caption" sx={{ color: palette.overlay0 }}>Périmètre</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.2 }}>
+                      <FilterList sx={{ fontSize: 13, color: palette.sapphire }} />
+                      <Typography variant="body2" sx={{ fontWeight: 500, color: palette.sapphire }}>
+                        {fullPlanData.filteredSuiteIds.length} suite{fullPlanData.filteredSuiteIds.length > 1 ? 's' : ''} sélectionnée{fullPlanData.filteredSuiteIds.length > 1 ? 's' : ''}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
