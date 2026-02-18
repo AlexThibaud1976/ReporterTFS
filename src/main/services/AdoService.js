@@ -222,7 +222,7 @@ class AdoService {
       try {
         const data = await this._get('_apis/wit/workitems', {
           ids: chunk.join(','),
-          '$expand': expand,
+          '$expand': expand === 'relations' ? 'Relations' : expand,
           errorPolicy: 'omit',
         })
         results.push(...(data.value || []))
@@ -256,21 +256,26 @@ class AdoService {
     if (testCaseIds.length === 0) return { traceability: [], bugDetails: [], enrichedResults: results }
 
     // ── 2. Fetch TCs avec leurs relations ──────────────────────────────
-    const tcWorkItems = await this._getWorkItemsBatch(testCaseIds, 'relations')
+    const tcWorkItems = await this._getWorkItemsBatch(testCaseIds, 'Relations')
 
     // ── 3. Collecter les IDs d'exigences liées ─────────────────────────
-    //    TestedBy-Forward = "ce test case valide cette exigence"
+    //    Depuis un TC : la relation vers son exigence est TestedBy-REVERSE
+    //    ("Tested By" Forward = Exigence → TC ; Reverse = TC → Exigence)
+    const TC_TO_REQ_RELS = [
+      'Microsoft.VSTS.Common.TestedBy-Reverse',  // Relation standard ADO TFS
+      'Microsoft.VSTS.Common.TestedBy-Forward',  // Fallback si configuré différemment
+    ]
     const reqIds = [...new Set(
       tcWorkItems.flatMap((wi) =>
         (wi.relations || [])
-          .filter((r) => r.rel === 'Microsoft.VSTS.Common.TestedBy-Forward')
+          .filter((r) => TC_TO_REQ_RELS.includes(r.rel))
           .map((r) => parseInt(r.url.split('/').pop()))
           .filter((id) => !isNaN(id) && id > 0)
       )
     )]
 
     // ── 4. Fetch exigences avec relations (pour remonter vers Feature) ─
-    const reqWorkItems = reqIds.length > 0 ? await this._getWorkItemsBatch(reqIds, 'relations') : []
+    const reqWorkItems = reqIds.length > 0 ? await this._getWorkItemsBatch(reqIds, 'Relations') : []
 
     // ── 5. Collecter les IDs de Features ──────────────────────────────
     const featureIds = [...new Set(
@@ -283,7 +288,7 @@ class AdoService {
     )]
 
     // ── 6. Fetch Features avec relations (pour remonter vers Epic) ─────
-    const featureWorkItems = featureIds.length > 0 ? await this._getWorkItemsBatch(featureIds, 'relations') : []
+    const featureWorkItems = featureIds.length > 0 ? await this._getWorkItemsBatch(featureIds, 'Relations') : []
 
     // ── 7. Collecter et fetch les Epics ────────────────────────────────
     const epicIds = [...new Set(
@@ -302,7 +307,9 @@ class AdoService {
       title: wi.fields?.['System.Title'] || `#${wi.id}`,
       type: wi.fields?.['System.WorkItemType'] || 'WorkItem',
       state: wi.fields?.['System.State'] || '',
-      url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
+      // Préférer le lien ADO natif, sinon construire l'URL manuellement
+      url: wi._links?.html?.href
+        || `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
     })
 
     const reqMap     = new Map(reqWorkItems.map((wi) => [wi.id, wi]))
@@ -416,12 +423,16 @@ class AdoService {
     let traceability = []
     let bugDetails = []
     let enrichedResults = results
+    let traceabilityError = null
     try {
       const traceData = await this._buildTraceability(suitesWithCases, results)
       traceability = traceData.traceability
       bugDetails   = traceData.bugDetails
       enrichedResults = traceData.enrichedResults
-    } catch (_) { /* Silently ignore — traçabilité optionnelle */ }
+    } catch (err) {
+      traceabilityError = err.message
+      console.warn('[AdoService] Traçabilité ignorée :', err.message)
+    }
 
     return {
       plan,
@@ -436,6 +447,7 @@ class AdoService {
       bugDetails,
       adoBaseUrl: authService.getBaseUrl(),
       project,
+      traceabilityError,
       extractedAt: new Date().toISOString(),
     }
   }

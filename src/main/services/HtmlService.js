@@ -27,6 +27,8 @@ class HtmlService {
     const suites = planData.suites || []
     const traceability = planData.traceability || []
     const bugDetails = planData.bugDetails || []
+    const traceabilityError = planData.traceabilityError || null
+    const adoBaseUrl = planData.adoBaseUrl || ''
     const generatedAt = new Date().toLocaleString('fr-FR')
 
     const statusColor = metadata.globalStatus === 'Réussi' ? '#a6e3a1'
@@ -99,12 +101,37 @@ class HtmlService {
       coverageRate: _totalLinked > 0 ? Math.round((_totalPassed / _totalLinked) * 100) : 0,
       bugsCount:    bugDetails.length,
     }
-    const bugMatrix = bugDetails.map(bug => {
+
+    // Fallback : si bugDetails est vide mais qu'on a des associatedBugs dans les résultats,
+    // construire le bugMatrix à partir des données disponibles
+    let bugMatrixSource = bugDetails
+    if (bugMatrixSource.length === 0) {
+      const _seen = new Set()
+      for (const r of results) {
+        for (const b of (r.associatedBugs || [])) {
+          if (!_seen.has(String(b.id))) {
+            _seen.add(String(b.id))
+            bugMatrixSource.push({
+              id: b.id,
+              title: b.title || `Bug #${b.id}`,
+              state: b.state || '',
+              severity: b.severity || '',
+              priority: b.priority || '',
+              assignedTo: b.assignedTo || '',
+              url: b.url || (adoBaseUrl ? `${adoBaseUrl}/_workitems/edit/${b.id}` : ''),
+            })
+          }
+        }
+      }
+    }
+    tracKpis.bugsCount = Math.max(tracKpis.bugsCount, bugMatrixSource.length)
+
+    const bugMatrix = bugMatrixSource.map(bug => {
       let assoc = null
       for (const r of results) {
         if ((r.associatedBugs || []).some(b => String(b.id) === String(bug.id))) {
           const te = traceability.find(t => t.testCaseName === r.testCaseName)
-          assoc = { id: te?.testCaseId, name: r.testCaseName }
+          assoc = { id: te?.testCaseId || r.testCaseId, name: r.testCaseName }
           break
         }
       }
@@ -366,7 +393,12 @@ class HtmlService {
   </div>
 
   <!-- TRAÇABILITÉ -->
-  ${reqMatrix.length > 0 ? `
+  ${traceabilityError ? `
+  <div class="alert" style="background:#1a1a2e;border-color:#f9e2af;color:#f9e2af">
+    ⚠ Traçabilité non disponible : ${this._esc(traceabilityError)}
+    <span style="color:var(--overlay);font-size:0.8rem;display:block;margin-top:4px">Vérifiez les permissions de lecture sur l'API Work Items (PAT).</span>
+  </div>` : ''}
+  ${(reqMatrix.length > 0) ? `
   <div class="section">
     <div class="section-title">📊 Matrice de Traçabilité — Requirements / User Stories</div>
 
