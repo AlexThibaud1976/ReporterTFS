@@ -318,8 +318,9 @@ class AdoService {
 
     // ── 9. Construire la traçabilité par test case ─────────────────────
     const traceability = tcWorkItems.map((tcWi) => {
+      // IMPORTANT : utiliser TC_TO_REQ_RELS qui inclut Reverse (TC→Req) et Forward (fallback)
       const linkedReqRels = (tcWi.relations || []).filter(
-        (r) => r.rel === 'Microsoft.VSTS.Common.TestedBy-Forward'
+        (r) => TC_TO_REQ_RELS.includes(r.rel)
       )
       const requirements = linkedReqRels
         .map((rel) => {

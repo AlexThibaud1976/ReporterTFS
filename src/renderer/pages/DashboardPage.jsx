@@ -1,14 +1,16 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box, Typography, Card, CardContent, Grid,
   Button, LinearProgress, Alert, CircularProgress,
   Select, MenuItem, FormControl, InputLabel, Table,
   TableBody, TableCell, TableHead, TableRow, Chip,
+  Collapse, IconButton, Tooltip,
 } from '@mui/material'
 import {
   Add, FolderOpen, Assessment, CheckCircle, Cancel, Block,
-  HourglassEmpty, Warning, TrendingUp,
+  HourglassEmpty, Warning, TrendingUp, KeyboardArrowDown, KeyboardArrowRight,
+  AccountTree, BugReport, Link as LinkIcon,
 } from '@mui/icons-material'
 import { useAdoStore } from '../store/adoStore'
 import { useAuthStore } from '../store/authStore'
@@ -215,6 +217,11 @@ export default function DashboardPage() {
             </Card>
           )}
 
+          {/* Matrice de traçabilité */}
+          {(fullPlanData?.traceability?.length > 0 || fullPlanData?.traceabilityError) && (
+            <TraceabilityMatrix planData={fullPlanData} />
+          )}
+
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Button variant="contained" size="large" startIcon={<Add />} onClick={() => navigate('/report')}>
               Générer le rapport
@@ -321,8 +328,7 @@ function DonutChart({ metrics }) {
 }
 
 // ─── History Chart (canvas natif) ─────────────────────────────────────────
-function HistoryChart({ history }) {
-  const canvasRef = useRef(null)
+function HistoryChart({ history }) {  const canvasRef = useRef(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -419,4 +425,321 @@ function HistoryChart({ history }) {
   }, [history])
 
   return <canvas ref={canvasRef} width={480} height={200} style={{ width: '100%', display: 'block' }} />
+}
+
+// ─── Traceability Matrix ───────────────────────────────────────────────────
+function TraceabilityMatrix({ planData }) {
+  const traceability = planData.traceability || []
+  const results      = planData.results || []
+  const bugDetails   = planData.bugDetails || []
+  const adoBaseUrl   = planData.adoBaseUrl || ''
+  const error        = planData.traceabilityError || null
+  const [expanded, setExpanded] = useState({})
+
+  // Build reverse map: testCaseName → result
+  const resultByName = new Map()
+  for (const r of results) {
+    const key = (r.testCaseName || '').trim().toLowerCase()
+    if (!resultByName.has(key)) resultByName.set(key, r)
+  }
+
+  // Build suite lookup from suites array
+  const tcToSuite = new Map()
+  for (const suite of (planData.suites || [])) {
+    for (const tc of (suite.testCases || [])) {
+      tcToSuite.set(Number(tc.id), suite.name)
+    }
+  }
+
+  // Build requirement matrix (one row per req)
+  const reqMap = new Map()
+  for (const tc of traceability) {
+    for (const req of tc.requirements) {
+      if (!reqMap.has(req.id)) reqMap.set(req.id, { ...req, testCases: [] })
+      const entry = reqMap.get(req.id)
+      if (!entry.testCases.find(t => t.id === tc.testCaseId)) {
+        const res = resultByName.get(tc.testCaseName.trim().toLowerCase())
+        entry.testCases.push({
+          id: tc.testCaseId,
+          name: tc.testCaseName,
+          outcome: res?.outcome || 'NotExecuted',
+          suiteName: tcToSuite.get(tc.testCaseId) || '',
+        })
+      }
+    }
+  }
+  const reqMatrix = [...reqMap.values()].map(req => {
+    const tests   = req.testCases.length
+    const passed  = req.testCases.filter(t => t.outcome === 'Passed').length
+    const failed  = req.testCases.filter(t => t.outcome === 'Failed').length
+    const blocked = req.testCases.filter(t => t.outcome === 'Blocked').length
+    const coverage = tests > 0 ? Math.round((passed / tests) * 100) : 0
+    return { ...req, tests, passed, failed, blocked, coverage }
+  })
+
+  const totalLinked = reqMatrix.reduce((s, r) => s + r.tests, 0)
+  const totalPassed = reqMatrix.reduce((s, r) => s + r.passed, 0)
+  const testsLinked = new Set(traceability.filter(t => t.requirements.length > 0).map(t => t.testCaseId)).size
+  const coverageRate = totalLinked > 0 ? Math.round((totalPassed / totalLinked) * 100) : 0
+
+  // Fallback bug list
+  let bugList = bugDetails.length > 0 ? bugDetails : []
+  if (bugList.length === 0) {
+    const seen = new Set()
+    for (const r of results) {
+      for (const b of (r.associatedBugs || [])) {
+        if (!seen.has(String(b.id))) {
+          seen.add(String(b.id))
+          bugList.push({
+            id: b.id, title: b.title || `Bug #${b.id}`, state: b.state || '',
+            severity: b.severity || '', priority: b.priority || '',
+            assignedTo: b.assignedTo || '',
+            url: b.url || (adoBaseUrl ? `${adoBaseUrl}/_workitems/edit/${b.id}` : ''),
+            _testName: r.testCaseName,
+          })
+        }
+      }
+    }
+  }
+  const bugMatrix = bugList.map(bug => {
+    if (bug._testName) return { ...bug, associatedTest: { name: bug._testName } }
+    let assoc = null
+    for (const r of results) {
+      if ((r.associatedBugs || []).some(b => String(b.id) === String(bug.id))) {
+        assoc = { name: r.testCaseName }; break
+      }
+    }
+    return { ...bug, associatedTest: assoc }
+  })
+
+  const openLink = (url) => { if (url) window.open(url, '_blank') }
+
+  const outcomeColor = (o) => ({
+    Passed: palette.green, Failed: palette.red, Blocked: palette.yellow,
+  }[o] || palette.overlay0)
+
+  const GRADIENT_CARDS = [
+    { label: 'Requirements Couverts', value: reqMatrix.length, bg: 'linear-gradient(135deg,#5b6cde,#8b5cf6)' },
+    { label: 'Tests de Couverture',   value: testsLinked,      bg: 'linear-gradient(135deg,#d946a8,#f472b6)' },
+    { label: 'Taux de Couverture',    value: `${coverageRate}%`, bg: 'linear-gradient(135deg,#059669,#34d399)' },
+    { label: 'Bugs Rattachés',        value: bugMatrix.length, bg: 'linear-gradient(135deg,#dc2626,#f87171)' },
+  ]
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <AccountTree sx={{ color: palette.blue, fontSize: 18 }} />
+          <Typography variant="h5">Matrice de Traçabilité — Requirements / User Stories</Typography>
+        </Box>
+
+        {/* Error */}
+        {error && (
+          <Alert severity="warning" sx={{ mb: 2, fontSize: '0.8rem' }}>
+            Traçabilité non disponible : {error}
+            <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
+              Vérifiez les permissions de lecture sur l'API Work Items (PAT).
+            </Typography>
+          </Alert>
+        )}
+
+        {/* KPI gradient cards */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {GRADIENT_CARDS.map(card => (
+            <Grid item xs={6} sm={3} key={card.label}>
+              <Box sx={{
+                borderRadius: 2, p: 2.5, textAlign: 'center', color: '#fff',
+                background: card.bg,
+              }}>
+                <Typography sx={{ fontSize: '2rem', fontWeight: 800, lineHeight: 1.1 }}>{card.value}</Typography>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.9, mt: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {card.label}
+                </Typography>
+              </Box>
+            </Grid>
+          ))}
+        </Grid>
+
+        {/* Matrix table */}
+        {reqMatrix.length > 0 && (
+          <>
+            <Typography variant="h5" sx={{ mb: 1.5 }}>
+              📊 Matrice Requirements / User Stories
+            </Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ '& th': { fontWeight: 700, color: palette.subtext0, fontSize: '0.75rem', borderColor: palette.surface1, bgcolor: palette.surface0 } }}>
+                  <TableCell padding="checkbox" />
+                  <TableCell>ID</TableCell>
+                  <TableCell>Titre</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>État</TableCell>
+                  <TableCell align="right">Tests</TableCell>
+                  <TableCell align="right">✅ Passés</TableCell>
+                  <TableCell align="right">❌ Échoués</TableCell>
+                  <TableCell align="right">🚫 Bloqués</TableCell>
+                  <TableCell sx={{ minWidth: 140 }}>Couverture</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {reqMatrix.map((req) => {
+                  const isOpen = !!expanded[req.id]
+                  const barColor = req.coverage >= 80 ? palette.green : req.coverage >= 50 ? palette.yellow : palette.red
+                  return (
+                    <React.Fragment key={req.id}>
+                      <TableRow
+                        hover
+                        onClick={() => setExpanded(e => ({ ...e, [req.id]: !e[req.id] }))}
+                        sx={{ cursor: 'pointer', '& td': { borderColor: palette.surface1 } }}
+                      >
+                        <TableCell padding="checkbox">
+                          <IconButton size="small" sx={{ color: palette.overlay0 }}>
+                            {isOpen ? <KeyboardArrowDown fontSize="small" /> : <KeyboardArrowRight fontSize="small" />}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip title="Ouvrir dans ADO">
+                            <Typography
+                              component="a"
+                              onClick={(e) => { e.stopPropagation(); openLink(req.url) }}
+                              sx={{ color: palette.blue, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                            >
+                              #{req.id}
+                            </Typography>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                            {req.parent?.parent && (
+                              <><Chip label={`🏔 #${req.parent.parent.id}`} size="small" onClick={(e) => { e.stopPropagation(); openLink(req.parent.parent.url) }}
+                                sx={{ fontSize: '0.65rem', height: 18, bgcolor: `${palette.peach}22`, color: palette.peach, cursor: 'pointer' }} />
+                              <Typography sx={{ color: palette.overlay0, fontSize: '0.7rem' }}>›</Typography></>
+                            )}
+                            {req.parent && (
+                              <><Chip label={`🔷 #${req.parent.id}`} size="small" onClick={(e) => { e.stopPropagation(); openLink(req.parent.url) }}
+                                sx={{ fontSize: '0.65rem', height: 18, bgcolor: `${palette.mauve}22`, color: palette.mauve, cursor: 'pointer' }} />
+                              <Typography sx={{ color: palette.overlay0, fontSize: '0.7rem' }}>›</Typography></>
+                            )}
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{req.title}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell><Chip label={req.type || 'User Story'} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.blue}22`, color: palette.blue }} /></TableCell>
+                        <TableCell><Chip label={req.state || '—'} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.green}22`, color: palette.green }} /></TableCell>
+                        <TableCell align="right"><Typography variant="body2" sx={{ fontWeight: 700 }}>{req.tests}</Typography></TableCell>
+                        <TableCell align="right"><Typography variant="body2" sx={{ color: palette.green, fontWeight: 600 }}>{req.passed}</Typography></TableCell>
+                        <TableCell align="right"><Typography variant="body2" sx={{ color: req.failed > 0 ? palette.red : palette.overlay0, fontWeight: req.failed > 0 ? 600 : 400 }}>{req.failed}</Typography></TableCell>
+                        <TableCell align="right"><Typography variant="body2" sx={{ color: req.blocked > 0 ? palette.yellow : palette.overlay0 }}>{req.blocked}</Typography></TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ flex: 1, height: 8, bgcolor: palette.surface1, borderRadius: 4, overflow: 'hidden' }}>
+                              <Box sx={{ height: '100%', borderRadius: 4, bgcolor: barColor, width: `${req.coverage}%` }} />
+                            </Box>
+                            <Typography variant="caption" sx={{ color: barColor, fontWeight: 700, minWidth: 36 }}>{req.coverage}%</Typography>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Expandable TC pills row */}
+                      <TableRow sx={{ '& td': { borderColor: palette.surface1 } }}>
+                        <TableCell colSpan={10} sx={{ py: 0, bgcolor: `${palette.blue}08` }}>
+                          <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                            <Box sx={{ py: 1.5, px: 2 }}>
+                              <Typography variant="caption" sx={{ color: palette.subtext0, fontWeight: 600, mb: 1, display: 'block' }}>Tests associés :</Typography>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                {req.testCases.length === 0 ? (
+                                  <Typography variant="caption" sx={{ color: palette.overlay0, fontStyle: 'italic' }}>Aucun test associé</Typography>
+                                ) : req.testCases.map(tc => (
+                                  <Chip
+                                    key={tc.id}
+                                    size="small"
+                                    label={
+                                      <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <Typography component="span" sx={{ fontSize: '0.72rem', fontWeight: 700, color: palette.blue }}>#{tc.id}</Typography>
+                                        <Typography component="span" sx={{ fontSize: '0.72rem' }}>{tc.name}</Typography>
+                                        {tc.suiteName && <Typography component="span" sx={{ fontSize: '0.68rem', color: palette.overlay0, fontStyle: 'italic' }}>(Suite: {tc.suiteName})</Typography>}
+                                      </Box>
+                                    }
+                                    sx={{
+                                      height: 'auto', py: 0.5,
+                                      bgcolor: `${outcomeColor(tc.outcome)}18`,
+                                      border: `1px solid ${outcomeColor(tc.outcome)}44`,
+                                      '& .MuiChip-label': { px: 1 },
+                                    }}
+                                  />
+                                ))}
+                              </Box>
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </>
+        )}
+
+        {/* Bugs table */}
+        {bugMatrix.length > 0 && (
+          <Box sx={{ mt: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <BugReport sx={{ color: palette.red, fontSize: 18 }} />
+              <Typography variant="h5">Bugs Rattachés aux Tests ({bugMatrix.length})</Typography>
+            </Box>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ '& th': { fontWeight: 700, color: palette.subtext0, fontSize: '0.75rem', borderColor: palette.surface1, bgcolor: palette.surface0 } }}>
+                  <TableCell>Bug ID</TableCell>
+                  <TableCell>Titre</TableCell>
+                  <TableCell>Sévérité</TableCell>
+                  <TableCell>Priorité</TableCell>
+                  <TableCell>État</TableCell>
+                  <TableCell>Assigné à</TableCell>
+                  <TableCell>Test Associé</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {bugMatrix.map((bug) => (
+                  <TableRow key={bug.id} hover sx={{ '& td': { borderColor: palette.surface1 } }}>
+                    <TableCell>
+                      <Typography
+                        component="a"
+                        onClick={() => openLink(bug.url)}
+                        sx={{ color: palette.red, fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                      >
+                        #{bug.id}
+                      </Typography>
+                    </TableCell>
+                    <TableCell><Typography variant="body2">{bug.title}</Typography></TableCell>
+                    <TableCell>
+                      {bug.severity ? <Chip label={bug.severity} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.peach}25`, color: palette.peach }} /> : <Typography variant="caption" sx={{ color: palette.overlay0 }}>—</Typography>}
+                    </TableCell>
+                    <TableCell>
+                      {bug.priority ? <Chip label={`P${bug.priority}`} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.yellow}25`, color: palette.yellow }} /> : <Typography variant="caption" sx={{ color: palette.overlay0 }}>—</Typography>}
+                    </TableCell>
+                    <TableCell><Chip label={bug.state || '—'} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.green}22`, color: palette.green }} /></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ color: palette.subtext0 }}>{bug.assignedTo || '—'}</Typography></TableCell>
+                    <TableCell>
+                      {bug.associatedTest
+                        ? <Chip label={bug.associatedTest.name} size="small" sx={{ fontSize: '0.7rem', bgcolor: `${palette.blue}22`, color: palette.blue, maxWidth: 200 }} />
+                        : <Typography variant="caption" sx={{ color: palette.overlay0 }}>—</Typography>
+                      }
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+
+        {/* Empty state */}
+        {reqMatrix.length === 0 && bugMatrix.length === 0 && !error && (
+          <Typography variant="body2" sx={{ color: palette.overlay0, fontStyle: 'italic', textAlign: 'center', py: 2 }}>
+            Aucune exigence liée aux cas de test de ce plan.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
