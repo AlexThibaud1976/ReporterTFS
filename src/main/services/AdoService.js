@@ -151,21 +151,46 @@ class AdoService {
    * @param {number} runId
    */
   async getTestResults(project, runId) {
-    const PAGE_SIZE = 100   // Conservatif : évite les limites ADO avec ou sans détails
+    // Première passe : récupère tous les résultats sans détails (pagination fiable)
+    const PAGE_SIZE = 100
     let allResults = []
     let skip = 0
-
     while (true) {
       const data = await this._get(`${project}/_apis/test/runs/${runId}/results`, {
         $top: PAGE_SIZE,
         $skip: skip,
-        // Pas de detailsToInclude ici : ce paramètre déclenche une limite stricte côté API
       })
       const page = data.value || []
       allResults = allResults.concat(page)
       if (page.length < PAGE_SIZE) break
       skip += PAGE_SIZE
-      if (skip >= 5000) break  // Sécurité anti-boucle infinie
+      if (skip >= 5000) break
+    }
+
+    // Deuxième passe : récupère les bugs associés (WorkItems) par petits lots
+    // detailsToInclude=WorkItems peut imposer une limite plus stricte → on pagine à 50
+    const BUG_PAGE = 50
+    const bugsByResultId = new Map()
+    try {
+      let bugSkip = 0
+      while (true) {
+        const bugData = await this._get(`${project}/_apis/test/runs/${runId}/results`, {
+          $top: BUG_PAGE,
+          $skip: bugSkip,
+          detailsToInclude: 'WorkItems',
+        })
+        const bugPage = bugData.value || []
+        for (const br of bugPage) {
+          if (br.associatedBugs?.length > 0) {
+            bugsByResultId.set(br.id, br.associatedBugs)
+          }
+        }
+        if (bugPage.length < BUG_PAGE) break
+        bugSkip += BUG_PAGE
+        if (bugSkip >= 5000) break
+      }
+    } catch (_) {
+      // Si l'API ne supporte pas detailsToInclude, on continue sans bugs
     }
 
     return allResults.map((r) => ({
@@ -180,7 +205,7 @@ class AdoService {
       completedDate: r.completedDate,
       computerName: r.computerName,
       tester: r.runBy?.displayName,
-      associatedBugs: (r.associatedBugs || []).map((b) => ({ id: b.id, url: b.url })),
+      associatedBugs: (bugsByResultId.get(r.id) || r.associatedBugs || []).map((b) => ({ id: b.id, url: b.url })),
       comment: r.comment,
     }))
   }
