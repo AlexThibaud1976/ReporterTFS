@@ -7,6 +7,8 @@ import {
 import {
   Dashboard as DashboardIcon,
   Description as ReportIcon,
+  CompareArrows as CompareIcon,
+  History as HistoryIcon,
   Settings as SettingsIcon,
   PowerSettingsNew as DisconnectIcon,
   ChevronLeft as CollapseIcon,
@@ -21,6 +23,8 @@ const DRAWER_COLLAPSED = 64
 const navItems = [
   { path: '/dashboard', label: 'Tableau de bord', icon: <DashboardIcon fontSize="small" /> },
   { path: '/report', label: 'Nouveau rapport', icon: <ReportIcon fontSize="small" /> },
+  { path: '/comparison', label: 'Comparer plans', icon: <CompareIcon fontSize="small" /> },
+  { path: '/history', label: 'Historique', icon: <HistoryIcon fontSize="small" /> },
 ]
 
 export default function AppLayout() {

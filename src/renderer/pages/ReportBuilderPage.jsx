@@ -11,7 +11,7 @@ import {
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
 import { useAdoStore } from '../store/adoStore'
-import { exportApi } from '../api/ipcApi'
+import { exportApi, reportHistoryApi } from '../api/ipcApi'
 import { palette } from '../theme/theme'
 
 const STEPS = ['Métadonnées', 'Format d\'export', 'Génération']
@@ -68,7 +68,8 @@ export default function ReportBuilderPage() {
         progress: Math.round((i / selectedFormats.length) * 80),
       })
 
-      const defaultName = `TFSReport_${metadata.projectRef || 'rapport'}_${new Date().toISOString().split('T')[0]}.${format === 'pptx' ? 'pptx' : format}`
+      const _ts = new Date().toISOString().replace('T', '_').replace(/:/g, '-').split('.')[0]
+      const defaultName = `TFSReport_${metadata.projectRef || 'rapport'}_${_ts}.${format === 'pptx' ? 'pptx' : format}`
       const outputPath = await exportApi.chooseOutputPath(defaultName)
       if (!outputPath) continue
 
@@ -88,6 +89,26 @@ export default function ReportBuilderPage() {
       lastExportPath: results[0]?.outputPath,
     })
     setActiveStep(2)
+
+    // Sauvegarder dans l'historique
+    const successfulResults = results.filter((r) => r.success)
+    if (successfulResults.length > 0) {
+      try {
+        await reportHistoryApi.add({
+          planId: fullPlanData.plan?.id,
+          planName: fullPlanData.plan?.name,
+          project: fullPlanData.project || '',
+          passRate: fullPlanData.metrics?.passRate,
+          totalTests: fullPlanData.metrics?.total,
+          globalStatus: metadata.globalStatus,
+          projectRef: metadata.projectRef,
+          appName: metadata.applicationName,
+          appVersion: metadata.applicationVersion,
+          formats: successfulResults.map((r) => r.format),
+          files: successfulResults.map((r) => ({ format: r.format, path: r.outputPath })),
+        })
+      } catch (_) { /* Historique non bloquant */ }
+    }
   }
 
   return (

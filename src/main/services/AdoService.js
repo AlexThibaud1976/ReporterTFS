@@ -206,6 +206,178 @@ class AdoService {
     }
   }
 
+  // ─── BATCH WORK ITEMS ───────────────────────────────────────────────────
+
+  /**
+   * Récupère des work items en batch (max 200 IDs par requête)
+   * @param {number[]} ids
+   * @param {'none'|'relations'} expand
+   * @returns {Promise<object[]>}
+   */
+  async _getWorkItemsBatch(ids, expand = 'none') {
+    if (!ids || ids.length === 0) return []
+    const results = []
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200)
+      try {
+        const data = await this._get('_apis/wit/workitems', {
+          ids: chunk.join(','),
+          '$expand': expand,
+          errorPolicy: 'omit',
+        })
+        results.push(...(data.value || []))
+      } catch (_) { /* Continuer si un batch échoue */ }
+    }
+    return results.filter(Boolean)
+  }
+
+  // ─── TRAÇABILITÉ ────────────────────────────────────────────────────────
+
+  /**
+   * Construit la traçabilité : pour chaque test case, trouve les exigences
+   * (User Story / Requirement) et remonte la hiérarchie vers Feature et Epic.
+   * Enrichit aussi les résultats avec les détails des bugs.
+   *
+   * @param {object[]} suitesWithCases - Suites avec leurs test cases
+   * @param {object[]} results         - Résultats d'exécution du dernier run
+   * @returns {Promise<{traceability, bugDetails, enrichedResults}>}
+   */
+  async _buildTraceability(suitesWithCases, results) {
+    const baseUrl = authService.getBaseUrl()
+
+    // ── 1. IDs uniques des test cases ──────────────────────────────────
+    const testCaseIds = [
+      ...new Set(
+        suitesWithCases.flatMap((s) =>
+          (s.testCases || []).map((tc) => Number(tc.id)).filter((id) => !isNaN(id) && id > 0)
+        )
+      ),
+    ]
+    if (testCaseIds.length === 0) return { traceability: [], bugDetails: [], enrichedResults: results }
+
+    // ── 2. Fetch TCs avec leurs relations ──────────────────────────────
+    const tcWorkItems = await this._getWorkItemsBatch(testCaseIds, 'relations')
+
+    // ── 3. Collecter les IDs d'exigences liées ─────────────────────────
+    //    TestedBy-Forward = "ce test case valide cette exigence"
+    const reqIds = [...new Set(
+      tcWorkItems.flatMap((wi) =>
+        (wi.relations || [])
+          .filter((r) => r.rel === 'Microsoft.VSTS.Common.TestedBy-Forward')
+          .map((r) => parseInt(r.url.split('/').pop()))
+          .filter((id) => !isNaN(id) && id > 0)
+      )
+    )]
+
+    // ── 4. Fetch exigences avec relations (pour remonter vers Feature) ─
+    const reqWorkItems = reqIds.length > 0 ? await this._getWorkItemsBatch(reqIds, 'relations') : []
+
+    // ── 5. Collecter les IDs de Features ──────────────────────────────
+    const featureIds = [...new Set(
+      reqWorkItems.flatMap((wi) =>
+        (wi.relations || [])
+          .filter((r) => r.rel === 'System.LinkTypes.Hierarchy-Reverse')
+          .map((r) => parseInt(r.url.split('/').pop()))
+          .filter((id) => !isNaN(id) && id > 0)
+      )
+    )]
+
+    // ── 6. Fetch Features avec relations (pour remonter vers Epic) ─────
+    const featureWorkItems = featureIds.length > 0 ? await this._getWorkItemsBatch(featureIds, 'relations') : []
+
+    // ── 7. Collecter et fetch les Epics ────────────────────────────────
+    const epicIds = [...new Set(
+      featureWorkItems.flatMap((wi) =>
+        (wi.relations || [])
+          .filter((r) => r.rel === 'System.LinkTypes.Hierarchy-Reverse')
+          .map((r) => parseInt(r.url.split('/').pop()))
+          .filter((id) => !isNaN(id) && id > 0)
+      )
+    )]
+    const epicWorkItems = epicIds.length > 0 ? await this._getWorkItemsBatch(epicIds, 'none') : []
+
+    // ── 8. Lookup maps ─────────────────────────────────────────────────
+    const _wiInfo = (wi) => ({
+      id: wi.id,
+      title: wi.fields?.['System.Title'] || `#${wi.id}`,
+      type: wi.fields?.['System.WorkItemType'] || 'WorkItem',
+      state: wi.fields?.['System.State'] || '',
+      url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
+    })
+
+    const reqMap     = new Map(reqWorkItems.map((wi) => [wi.id, wi]))
+    const featureMap = new Map(featureWorkItems.map((wi) => [wi.id, wi]))
+    const epicMap    = new Map(epicWorkItems.map((wi) => [wi.id, wi]))
+
+    // ── 9. Construire la traçabilité par test case ─────────────────────
+    const traceability = tcWorkItems.map((tcWi) => {
+      const linkedReqRels = (tcWi.relations || []).filter(
+        (r) => r.rel === 'Microsoft.VSTS.Common.TestedBy-Forward'
+      )
+      const requirements = linkedReqRels
+        .map((rel) => {
+          const reqId = parseInt(rel.url.split('/').pop())
+          const reqWi = reqMap.get(reqId)
+          if (!reqWi) return null
+          const reqInfo = _wiInfo(reqWi)
+
+          // Remonter vers Feature
+          const featureRel = (reqWi.relations || []).find(
+            (r) => r.rel === 'System.LinkTypes.Hierarchy-Reverse'
+          )
+          const featureId = featureRel ? parseInt(featureRel.url.split('/').pop()) : null
+          const featureWi = featureId ? featureMap.get(featureId) : null
+          if (featureWi) {
+            const featureInfo = _wiInfo(featureWi)
+            // Remonter vers Epic
+            const epicRel = (featureWi.relations || []).find(
+              (r) => r.rel === 'System.LinkTypes.Hierarchy-Reverse'
+            )
+            const epicId = epicRel ? parseInt(epicRel.url.split('/').pop()) : null
+            featureInfo.parent = epicId && epicMap.get(epicId) ? _wiInfo(epicMap.get(epicId)) : null
+            reqInfo.parent = featureInfo
+          }
+          return reqInfo
+        })
+        .filter(Boolean)
+
+      return {
+        testCaseId: tcWi.id,
+        testCaseName: tcWi.fields?.['System.Title'] || `TC #${tcWi.id}`,
+        requirements,
+      }
+    })
+
+    // ── 10. Bug details : fetch les WI bugs pour titre/état/sévérité ──
+    const bugIds = [...new Set(
+      results.flatMap((r) =>
+        (r.associatedBugs || []).map((b) => Number(b.id)).filter((id) => !isNaN(id) && id > 0)
+      )
+    )]
+    const bugWorkItems = bugIds.length > 0 ? await this._getWorkItemsBatch(bugIds, 'none') : []
+    const bugDetails = bugWorkItems.map((wi) => ({
+      id: wi.id,
+      title: wi.fields?.['System.Title'] || `Bug #${wi.id}`,
+      state: wi.fields?.['System.State'] || '',
+      severity: wi.fields?.['Microsoft.VSTS.Common.Severity'] || '',
+      priority: wi.fields?.['Microsoft.VSTS.Common.Priority'] || '',
+      assignedTo: wi.fields?.['System.AssignedTo']?.displayName || '',
+      url: `${baseUrl}/${wi.fields?.['System.TeamProject'] || ''}/_workitems/edit/${wi.id}`,
+    }))
+
+    // ── 11. Enrichir les résultats avec détails bugs + URLs ────────────
+    const bugDetailMap = new Map(bugDetails.map((b) => [b.id, b]))
+    const enrichedResults = results.map((r) => ({
+      ...r,
+      associatedBugs: (r.associatedBugs || []).map((b) => ({
+        ...b,
+        ...(bugDetailMap.get(Number(b.id)) || {}),
+      })),
+    }))
+
+    return { traceability, bugDetails, enrichedResults }
+  }
+
   // ─── EXTRACTION COMPLÈTE ────────────────────────────────────────────────
 
   /**
@@ -239,15 +411,31 @@ class AdoService {
     const suiteMetrics = this._computeSuiteMetrics(results, suitesWithCases)
     const metrics = this._computeMetrics(results, suites, suitesWithCases)
 
+    // Traçabilité : on l'essaie séparément pour ne pas bloquer le rapport en
+    // cas de permissions insuffisantes sur l'API work items.
+    let traceability = []
+    let bugDetails = []
+    let enrichedResults = results
+    try {
+      const traceData = await this._buildTraceability(suitesWithCases, results)
+      traceability = traceData.traceability
+      bugDetails   = traceData.bugDetails
+      enrichedResults = traceData.enrichedResults
+    } catch (_) { /* Silently ignore — traçabilité optionnelle */ }
+
     return {
       plan,
       suites: suitesWithCases,
       suiteMetrics,
       runs,
       latestRun,
-      results,
+      results: enrichedResults,
       history,
       metrics,
+      traceability,
+      bugDetails,
+      adoBaseUrl: authService.getBaseUrl(),
+      project,
       extractedAt: new Date().toISOString(),
     }
   }

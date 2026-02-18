@@ -7,6 +7,7 @@ const authHandlers = require('./ipcHandlers/auth.handler')
 const adoHandlers = require('./ipcHandlers/ado.handler')
 const exportHandlers = require('./ipcHandlers/export.handler')
 const scheduleHandlers = require('./ipcHandlers/schedule.handler')
+const { scheduleService } = scheduleHandlers
 
 let mainWindow = null
 
@@ -63,6 +64,16 @@ app.whenReady().then(() => {
   adoHandlers.register(ipcMain)
   exportHandlers.register(ipcMain)
   scheduleHandlers.register(ipcMain)
+
+  // ─── Handlers système ────────────────────────────────────────────────
+  ipcMain.handle('system:openFile', async (_, filePath) => {
+    const error = await shell.openPath(filePath)
+    return { success: !error, error: error || null }
+  })
+  ipcMain.handle('system:getVersion', () => app.getVersion())
+
+  // Démarrer le service de planification (Phase 4)
+  scheduleService.init(mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

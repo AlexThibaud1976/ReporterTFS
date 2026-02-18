@@ -35,8 +35,41 @@ export const exportApi = {
   chooseOutputPath: (defaultName) => api.export.chooseOutputPath(defaultName),
 }
 
+// ─── EMAIL ─────────────────────────────────────────────────────────────────
+export const emailApi = {
+  testSmtp: (config) => api.email.testSmtp(config),
+  sendReport: (config) => api.email.sendReport(config),
+  saveConfig: (config) => api.email.saveConfig(config),
+  loadConfig: () => api.email.loadConfig(),
+}
+
+// ─── SCHEDULE ──────────────────────────────────────────────────────────────
+export const scheduleApi = {
+  create: (config) => api.schedule.create(config),
+  list: () => api.schedule.list(),
+  delete: (id) => api.schedule.delete(id),
+  toggle: (id) => api.schedule.toggle(id),
+  onRan: (callback) => api.schedule.onRan(callback),
+}
+
+// ─── TEMPLATE ──────────────────────────────────────────────────────────────
+export const templateApi = {
+  save: (config) => api.template.save(config),
+  load: () => api.template.load(),
+  chooseLogo: () => api.template.chooseLogo(),
+}
+
 // ─── SYSTEM ────────────────────────────────────────────────────────────────
 export const systemApi = {
   openFile: (path) => api.system.openFile(path),
   getVersion: () => api.system.getVersion(),
+}
+
+// ─── REPORT HISTORY ─────────────────────────────────────────────────────
+export const reportHistoryApi = {
+  add:       (entry)  => api.reportHistory.add(entry),
+  getAll:    ()       => api.reportHistory.getAll(),
+  getByPlan: (planId) => api.reportHistory.getByPlan(planId),
+  delete:    (id)     => api.reportHistory.delete(id),
+  clear:     ()       => api.reportHistory.clear(),
 }

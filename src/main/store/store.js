@@ -50,6 +50,37 @@ const store = new Store({
         alertThreshold: 80,
       },
     },
+    reportTemplate: {
+      type: 'object',
+      default: {
+        accentColor: '#1e66f5',
+        orgName: '',
+        footerText: '',
+        logoPath: '',
+      },
+    },
+    reportHistory: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        properties: {
+          id:          { type: 'string' },
+          date:        { type: 'string' },
+          planId:      { type: 'string' },
+          planName:    { type: 'string' },
+          project:     { type: 'string' },
+          passRate:    { type: 'number' },
+          totalTests:  { type: 'number' },
+          globalStatus:{ type: 'string' },
+          projectRef:  { type: 'string' },
+          appName:     { type: 'string' },
+          appVersion:  { type: 'string' },
+          formats:     { type: 'array', items: { type: 'string' } },
+          files:       { type: 'array', items: { type: 'object' } },
+        },
+      },
+    },
   },
 })
 

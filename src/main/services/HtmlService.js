@@ -25,6 +25,8 @@ class HtmlService {
     const metrics = planData.metrics
     const results = planData.results || []
     const suites = planData.suites || []
+    const traceability = planData.traceability || []
+    const bugDetails = planData.bugDetails || []
     const generatedAt = new Date().toLocaleString('fr-FR')
 
     const statusColor = metadata.globalStatus === 'Réussi' ? '#a6e3a1'
@@ -41,7 +43,16 @@ class HtmlService {
       duration: r.durationInMs ? (r.durationInMs / 1000).toFixed(2) : null,
       error: r.errorMessage,
       bugs: r.associatedBugs?.length || 0,
+      bugLinks: (r.associatedBugs || []).map(b => ({
+        id: b.id,
+        title: b.title || `Bug #${b.id}`,
+        url: b.url || '',
+        state: b.state || '',
+      })),
     })))
+
+    const traceabilityJson = JSON.stringify(traceability)
+    const bugDetailsJson = JSON.stringify(bugDetails)
 
     const metricsJson = JSON.stringify({
       labels: ['Réussis', 'Échoués', 'Bloqués', 'Non exécutés'],
@@ -128,6 +139,17 @@ class HtmlService {
     /* Footer */
     .footer { text-align: center; padding: 24px; color: var(--overlay); font-size: 0.8rem; border-top: 1px solid var(--surface); margin-top: 24px; }
     .footer .tfs-badge { color: var(--blue); font-weight: 600; }
+
+    /* Traceability */
+    .req-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 3px 0; }
+    .chain-arrow { color: var(--overlay); font-size: 1rem; }
+    .wi-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; padding: 2px 8px; border-radius: 12px; }
+    .wi-us      { background: rgba(137,180,250,0.18); color: #89b4fa; }
+    .wi-feature { background: rgba(203,166,247,0.18); color: #cba6f7; }
+    .wi-epic    { background: rgba(250,179,135,0.18); color: #fab387; }
+    .wi-badge a { color: inherit; text-decoration: none; }
+    .wi-badge a:hover { text-decoration: underline; }
+    .wi-state { font-size: 0.7rem; color: var(--overlay); font-style: italic; }
   </style>
 </head>
 <body>
@@ -258,6 +280,71 @@ class HtmlService {
     </div>
   </div>
 
+  <!-- TRAÇABILITÉ -->
+  ${traceability.length > 0 ? `
+  <div class="section">
+    <div class="section-title">Traçabilité — Cas de test → Exigences</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Cas de test</th>
+            <th>Exigences liées (US / Feature / Epic)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${traceability.map(tc => `
+          <tr>
+            <td style="font-weight:600">${this._esc(tc.testCaseName)}</td>
+            <td>${tc.requirements.length === 0
+              ? '<span style="color:var(--overlay);font-style:italic">Aucune exigence liée</span>'
+              : tc.requirements.map(req => {
+                  const epicPart = req.parent?.parent
+                    ? `<span class="wi-badge wi-epic">🏔 <a href="${this._esc(req.parent.parent.url)}" target="_blank" rel="noopener">#${req.parent.parent.id} ${this._esc(req.parent.parent.title)}</a></span><span class="chain-arrow">›</span>`
+                    : ''
+                  const featPart = req.parent
+                    ? `<span class="wi-badge wi-feature">🔷 <a href="${this._esc(req.parent.url)}" target="_blank" rel="noopener">#${req.parent.id} ${this._esc(req.parent.title)}</a></span><span class="chain-arrow">›</span>`
+                    : ''
+                  return `<div class="req-chain">${epicPart}${featPart}<span class="wi-badge wi-us">📋 <a href="${this._esc(req.url)}" target="_blank" rel="noopener">#${req.id} ${this._esc(req.title)}</a></span><span class="wi-state">${this._esc(req.state)}</span></div>`
+                }).join('')
+            }</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : ''}
+
+  <!-- BUGS -->
+  ${bugDetails.length > 0 ? `
+  <div class="section">
+    <div class="section-title">Bugs liés (${bugDetails.length})</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Titre</th>
+            <th>État</th>
+            <th>Sévérité</th>
+            <th>Priorité</th>
+            <th>Assigné à</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bugDetails.map(b => `
+          <tr>
+            <td><a href="${this._esc(b.url)}" target="_blank" rel="noopener" style="color:#f38ba8;font-weight:600">🐛 #${b.id}</a></td>
+            <td>${this._esc(b.title)}</td>
+            <td><span class="wi-state" style="font-size:0.8rem;color:var(--subtext);font-style:normal">${this._esc(b.state)}</span></td>
+            <td style="color:var(--subtext)">${this._esc(b.severity) || '—'}</td>
+            <td style="color:var(--subtext)">${b.priority || '—'}</td>
+            <td style="color:var(--subtext)">${this._esc(b.assignedTo) || '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>` : ''}
+
   <!-- FOOTER -->
   <div class="footer">
     Rapport généré par <span class="tfs-badge">TFSReporter</span> le ${generatedAt}
@@ -270,6 +357,8 @@ class HtmlService {
 // ─── Données ──────────────────────────────────────────────────────────
 const RESULTS = ${resultsJson};
 const METRICS = ${metricsJson};
+const TRACEABILITY = ${traceabilityJson};
+const BUG_DETAILS = ${bugDetailsJson};
 
 // ─── Charts ───────────────────────────────────────────────────────────
 const donutCtx = document.getElementById('donutChart').getContext('2d');
@@ -329,7 +418,12 @@ function renderTable(data) {
       '<td><span class="outcome-badge outcome-' + (r.outcome || 'NotExecuted') + '">' + (r.outcome || '—') + '</span></td>' +
       '<td>' + esc(r.tester || '—') + '</td>' +
       '<td style="color:var(--subtext)">' + (r.duration ? r.duration + 's' : '—') + '</td>' +
-      '<td>' + (r.bugs > 0 ? '<span style="color:#f38ba8;font-weight:600">🐛 ' + r.bugs + '</span>' : '') + '</td>';
+      '<td>' + (r.bugLinks && r.bugLinks.length > 0
+        ? r.bugLinks.map(b => b.url
+            ? '<a href="' + b.url + '" target="_blank" rel="noopener" style="color:#f38ba8;font-weight:600;display:inline-block;margin:1px 3px">🐛 #' + b.id + '</a>'
+            : '<span style="color:#f38ba8;font-weight:600">🐛 #' + b.id + '</span>'
+          ).join(' ')
+        : '') + '</td>';
     tbody.appendChild(tr);
   });
 }

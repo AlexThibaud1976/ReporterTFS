@@ -7,6 +7,8 @@ import { useAuthStore } from './store/authStore'
 import ConnectionPage from './pages/ConnectionPage'
 import DashboardPage from './pages/DashboardPage'
 import ReportBuilderPage from './pages/ReportBuilderPage'
+import ComparisonPage from './pages/ComparisonPage'
+import ReportHistoryPage from './pages/ReportHistoryPage'
 import SettingsPage from './pages/SettingsPage'
 
 // Layout
@@ -46,6 +48,8 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="report" element={<ReportBuilderPage />} />
+          <Route path="comparison" element={<ComparisonPage />} />
+          <Route path="history" element={<ReportHistoryPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

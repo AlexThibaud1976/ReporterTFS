@@ -42,14 +42,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (config) => ipcRenderer.invoke('schedule:create', config),
     list: () => ipcRenderer.invoke('schedule:list'),
     delete: (id) => ipcRenderer.invoke('schedule:delete', id),
+    toggle: (id) => ipcRenderer.invoke('schedule:toggle', id),
+    onRan: (callback) => ipcRenderer.on('schedule:ran', (_, data) => callback(data)),
   },
 
   // ─── Email ────────────────────────────────────────────────────────────
   email: {
     sendReport: (config) => ipcRenderer.invoke('email:sendReport', config),
     testSmtp: (config) => ipcRenderer.invoke('email:testSmtp', config),
+    saveConfig: (config) => ipcRenderer.invoke('email:saveConfig', config),
+    loadConfig: () => ipcRenderer.invoke('email:loadConfig'),
   },
 
+  // ─── Template de rapport ──────────────────────────────────────────────
+  template: {
+    save: (config) => ipcRenderer.invoke('template:save', config),
+    load: () => ipcRenderer.invoke('template:load'),
+    chooseLogo: () => ipcRenderer.invoke('template:chooseLogo'),
+  },
+  // ─── Historique des rapports ──────────────────────────────────────────────
+  reportHistory: {
+    add:           (entry) => ipcRenderer.invoke('report:addToHistory', entry),
+    getAll:        ()      => ipcRenderer.invoke('report:getHistory'),
+    getByPlan:     (planId)=> ipcRenderer.invoke('report:getHistoryByPlan', planId),
+    delete:        (id)    => ipcRenderer.invoke('report:deleteFromHistory', id),
+    clear:         ()      => ipcRenderer.invoke('report:clearHistory'),
+  },
   // ─── Système ──────────────────────────────────────────────────────────
   system: {
     openFile: (path) => ipcRenderer.invoke('system:openFile', path),
