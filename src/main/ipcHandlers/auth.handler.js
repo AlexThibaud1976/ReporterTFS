@@ -9,7 +9,10 @@ function register(ipcMain) {
   })
 
   ipcMain.handle('auth:loadConnection', async (_, name) => {
-    if (name) return authService.loadConnection(name)
+    if (name) {
+      authService.setActiveConnection(name)
+      return authService.loadConnection(name)
+    }
     return authService.loadActiveConnection()
   })
 
@@ -23,6 +26,10 @@ function register(ipcMain) {
 
   ipcMain.handle('auth:testConnection', async (_, config) => {
     return authService.testConnection(config)
+  })
+
+  ipcMain.handle('auth:disconnect', async () => {
+    return authService.clearActiveConnection()
   })
 }
 

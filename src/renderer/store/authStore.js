@@ -90,9 +90,10 @@ export const useAuthStore = create((set, get) => ({
   },
 
   /**
-   * Déconnexion (ne supprime pas, juste réinitialise l'état)
+   * Déconnexion — efface la connexion active du store persisté et réinitialise l'état
    */
-  disconnect: () => {
+  disconnect: async () => {
+    await authApi.disconnect()
     set({ activeConnection: null, isConnected: false })
   },
 

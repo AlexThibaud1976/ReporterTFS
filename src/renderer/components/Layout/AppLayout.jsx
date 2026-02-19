@@ -35,8 +35,8 @@ export default function AppLayout() {
 
   const drawerWidth = collapsed ? DRAWER_COLLAPSED : DRAWER_WIDTH
 
-  const handleDisconnect = () => {
-    disconnect()
+  const handleDisconnect = async () => {
+    await disconnect()
     navigate('/connect')
   }
 

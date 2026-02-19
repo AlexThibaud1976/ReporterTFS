@@ -10,10 +10,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── Authentification ─────────────────────────────────────────────────
   auth: {
     saveConnection: (config) => ipcRenderer.invoke('auth:saveConnection', config),
-    loadConnection: () => ipcRenderer.invoke('auth:loadConnection'),
+    loadConnection: (name) => ipcRenderer.invoke('auth:loadConnection', name),
     deleteConnection: (name) => ipcRenderer.invoke('auth:deleteConnection', name),
     listConnections: () => ipcRenderer.invoke('auth:listConnections'),
     testConnection: (config) => ipcRenderer.invoke('auth:testConnection', config),
+    disconnect: () => ipcRenderer.invoke('auth:disconnect'),
   },
 
   // ─── Azure DevOps API ─────────────────────────────────────────────────

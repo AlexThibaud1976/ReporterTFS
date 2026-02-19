@@ -115,6 +115,15 @@ class AuthService {
     return { success: true }
   }
 
+  clearActiveConnection() {
+    store.set('activeConnectionName', '')
+    return { success: true }
+  }
+
+  setActiveConnection(name) {
+    store.set('activeConnectionName', name)
+  }
+
   // ─── Test de connexion ───────────────────────────────────────────────────
 
   async testConnection(config) {

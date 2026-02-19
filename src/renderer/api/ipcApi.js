@@ -12,6 +12,7 @@ export const authApi = {
   deleteConnection: (name) => api.auth.deleteConnection(name),
   listConnections: () => api.auth.listConnections(),
   testConnection: (config) => api.auth.testConnection(config),
+  disconnect: () => api.auth.disconnect(),
 }
 
 // ─── ADO ───────────────────────────────────────────────────────────────────
