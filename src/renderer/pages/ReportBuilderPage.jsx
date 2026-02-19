@@ -308,7 +308,7 @@ export default function ReportBuilderPage() {
               onClick={handleGenerate}
               variant="contained"
               disabled={selectedFormats.length === 0 || !fullPlanData || exportProgress.isExporting}
-              startIcon={exportProgress.isExporting ? <CircularProgress size={16} /> : <PictureAsPdf />}
+              startIcon={exportProgress.isExporting ? <CircularProgress size={16} /> : <Slideshow />}
             >
               {exportProgress.isExporting ? 'Génération...' : 'Générer les rapports'}
             </Button>
