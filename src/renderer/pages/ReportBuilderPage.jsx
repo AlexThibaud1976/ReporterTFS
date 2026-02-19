@@ -7,7 +7,7 @@ import {
 } from '@mui/material'
 import { DatePicker } from '@mui/x-date-pickers'
 import {
-  PictureAsPdf, TableChart, Slideshow, Code,
+  PictureAsPdf, Slideshow, Code,
   Check, ArrowBack, ArrowForward, AttachFile,
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
@@ -19,7 +19,6 @@ const STEPS = ['Métadonnées', 'Format d\'export', 'Génération']
 
 const EXPORT_FORMATS = [
   { id: 'pdf', label: 'PDF', icon: <PictureAsPdf />, description: 'Rapport professionnel complet', color: palette.red },
-  { id: 'excel', label: 'Excel', icon: <TableChart />, description: 'Données brutes pour analyse', color: palette.green },
   { id: 'pptx', label: 'PowerPoint', icon: <Slideshow />, description: 'Présentation comité de pilotage', color: palette.peach },
   { id: 'html', label: 'HTML', icon: <Code />, description: 'Rapport interactif intranet', color: palette.blue },
 ]
