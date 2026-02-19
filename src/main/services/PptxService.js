@@ -54,7 +54,10 @@ class PptxService {
       this._slidePassRate(pptx, planData)
       this._slideResultsByStatus(pptx, planData)
       this._slideSuites(pptx, planData)
-      if (planData.metrics?.bugsCount > 0) {
+      if (planData.traceability?.length > 0) {
+        this._slideTraceability(pptx, planData)
+      }
+      if (planData.bugDetails?.length > 0) {
         this._slideBugs(pptx, planData)
       }
       this._slideConclusion(pptx, metadata, planData)
@@ -327,52 +330,102 @@ class PptxService {
     }
   }
 
-  // ─── SLIDE 6 : Bugs ───────────────────────────────────────────────────
+  // ─── SLIDE 6 : Traçabilité ────────────────────────────────────────────
+  _slideTraceability(pptx, planData) {
+    const C = PptxService.COLORS
+    const traceability = planData.traceability || []
+    const ROWS_PER_SLIDE = 13
+
+    // Paginer si > ROWS_PER_SLIDE lignes
+    for (let pageStart = 0; pageStart < traceability.length; pageStart += ROWS_PER_SLIDE) {
+      const pageItems = traceability.slice(pageStart, pageStart + ROWS_PER_SLIDE)
+      const slide = pptx.addSlide()
+      slide.background = { color: 'F8F8FC' }
+
+      const pageLabel = traceability.length > ROWS_PER_SLIDE
+        ? `Traçabilité (${pageStart + 1}-${Math.min(pageStart + ROWS_PER_SLIDE, traceability.length)} / ${traceability.length})`
+        : 'Traçabilité'
+      this._slideHeader(slide, pageLabel, pptx)
+
+      const rows = pageItems.map((tc, i) => {
+        const fill = i % 2 === 0 ? 'FFFFFF' : 'F0F0F8'
+        const reqs = (tc.requirements || []).map((r) => {
+          const parts = [`#${r.id} ${r.title || ''}`]
+          if (r.parent) parts.push(`> ${r.parent.title || ''}${r.parent.parent ? ' > ' + r.parent.parent.title : ''}`)
+          return parts.join(' ')
+        }).join(' | ') || '—'
+        return [
+          { text: `#${tc.testCaseId}`, options: { fontSize: 8, bold: true, color: C.blue, fill } },
+          { text: tc.testCaseName || '—', options: { fontSize: 8, fill } },
+          { text: reqs, options: { fontSize: 7.5, color: '555577', fill } },
+        ]
+      })
+
+      const tableData = [
+        [
+          { text: 'TC ID', options: { bold: true, color: C.white, fill: C.base, fontSize: 10, w: 1.2 } },
+          { text: 'Cas de test', options: { bold: true, color: C.white, fill: C.base, fontSize: 10 } },
+          { text: 'Exigences liées', options: { bold: true, color: C.white, fill: C.base, fontSize: 10 } },
+        ],
+        ...rows,
+      ]
+
+      slide.addTable(tableData, {
+        x: 0.5, y: 1.3, w: 12.33,
+        border: { type: 'solid', color: 'd0d0d0', pt: 0.5 },
+        fontFace: 'Calibri',
+        rowH: 0.35,
+        colW: [1.2, 4.5, 6.63],
+      })
+    }
+  }
+
+  // ─── SLIDE 7 : Bugs ───────────────────────────────────────────────────
   _slideBugs(pptx, planData) {
     const C = PptxService.COLORS
-    const slide = pptx.addSlide()
-    const metrics = planData.metrics
+    const bugDetails = planData.bugDetails || []
+    const ROWS_PER_SLIDE = 13
 
-    slide.background = { color: 'F8F8FC' }
-    this._slideHeader(slide, `Bugs identifiés (${metrics.bugsCount})`, pptx)
+    for (let pageStart = 0; pageStart < bugDetails.length; pageStart += ROWS_PER_SLIDE) {
+      const pageItems = bugDetails.slice(pageStart, pageStart + ROWS_PER_SLIDE)
+      const slide = pptx.addSlide()
+      slide.background = { color: 'F8F8FC' }
 
-    const results = planData.results || []
-    const bugsWithContext = []
-    results.forEach((r) => {
-      ;(r.associatedBugs || []).forEach((bug) => {
-        bugsWithContext.push({
-          bugId: `#${bug.id}`,
-          testName: r.testCaseName || '—',
-          outcome: r.outcome || '—',
-          tester: r.tester || '—',
-        })
+      const pageLabel = bugDetails.length > ROWS_PER_SLIDE
+        ? `Bugs identifiés (${pageStart + 1}-${Math.min(pageStart + ROWS_PER_SLIDE, bugDetails.length)} / ${bugDetails.length})`
+        : `Bugs identifiés (${bugDetails.length})`
+      this._slideHeader(slide, pageLabel, pptx)
+
+      const rows = pageItems.map((bug, i) => {
+        const fill = i % 2 === 0 ? 'FFFFFF' : 'F0F0F8'
+        return [
+          { text: `#${bug.id}`, options: { fontSize: 9, bold: true, color: C.red, fill } },
+          { text: bug.title || '—', options: { fontSize: 9, fill } },
+          { text: bug.state || '—', options: { fontSize: 9, fill } },
+          { text: bug.severity || '—', options: { fontSize: 9, fill } },
+          { text: bug.testCase?.name || '—', options: { fontSize: 9, fill } },
+        ]
       })
-    })
 
-    const rows = bugsWithContext.slice(0, 14).map((bug, i) => [
-      { text: bug.bugId, options: { fontSize: 9, bold: true, color: C.red, fill: i % 2 === 0 ? 'FFFFFF' : 'F0F0F8' } },
-      { text: bug.testName, options: { fontSize: 9, fill: i % 2 === 0 ? 'FFFFFF' : 'F0F0F8' } },
-      { text: bug.outcome, options: { fontSize: 9, fill: i % 2 === 0 ? 'FFFFFF' : 'F0F0F8' } },
-      { text: bug.tester, options: { fontSize: 9, fill: i % 2 === 0 ? 'FFFFFF' : 'F0F0F8' } },
-    ])
+      const tableData = [
+        [
+          { text: 'ID', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
+          { text: 'Titre du bug', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
+          { text: 'Statut', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
+          { text: 'Sévérité', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
+          { text: 'Cas de test', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
+        ],
+        ...rows,
+      ]
 
-    const tableData = [
-      [
-        { text: 'Bug ID', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
-        { text: 'Cas de test', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
-        { text: 'Statut', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
-        { text: 'Testeur', options: { bold: true, color: C.white, fill: 'c0392b', fontSize: 10 } },
-      ],
-      ...rows,
-    ]
-
-    slide.addTable(tableData, {
-      x: 0.5, y: 1.3, w: 12.33,
-      border: { type: 'solid', color: 'd0d0d0', pt: 0.5 },
-      fontFace: 'Calibri',
-      rowH: 0.38,
-      colW: [1.5, 6, 2, 2.83],
-    })
+      slide.addTable(tableData, {
+        x: 0.5, y: 1.3, w: 12.33,
+        border: { type: 'solid', color: 'd0d0d0', pt: 0.5 },
+        fontFace: 'Calibri',
+        rowH: 0.38,
+        colW: [1.0, 4.5, 1.5, 1.5, 3.83],
+      })
+    }
   }
 
   // ─── SLIDE 7 : Conclusion ─────────────────────────────────────────────

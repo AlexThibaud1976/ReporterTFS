@@ -7,7 +7,7 @@ import {
 } from '@mui/material'
 import { DatePicker } from '@mui/x-date-pickers'
 import {
-  PictureAsPdf, Slideshow, Code,
+  Slideshow, Code,
   Check, ArrowBack, ArrowForward, AttachFile,
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
@@ -18,7 +18,6 @@ import { palette } from '../theme/theme'
 const STEPS = ['Métadonnées', 'Format d\'export', 'Génération']
 
 const EXPORT_FORMATS = [
-  { id: 'pdf', label: 'PDF', icon: <PictureAsPdf />, description: 'Rapport professionnel complet', color: palette.red },
   { id: 'pptx', label: 'PowerPoint', icon: <Slideshow />, description: 'Présentation comité de pilotage', color: palette.peach },
   { id: 'html', label: 'HTML', icon: <Code />, description: 'Rapport interactif intranet', color: palette.blue },
 ]
@@ -30,7 +29,7 @@ export default function ReportBuilderPage() {
   const { fullPlanData, selectedProject, selectedPlan, selectedSuiteIds } = useAdoStore()
 
   const [activeStep, setActiveStep] = useState(0)
-  const [selectedFormats, setSelectedFormats] = useState(['pdf'])
+  const [selectedFormats, setSelectedFormats] = useState(['pptx'])
   const [validationError, setValidationError] = useState(null)
   const [includeAttachments, setIncludeAttachments] = useState(false)
 
@@ -92,9 +91,7 @@ export default function ReportBuilderPage() {
       if (!outputPath) continue
 
       let result
-      if (format === 'pdf') result = await exportApi.toPdf(reportData, outputPath)
-      else if (format === 'excel') result = await exportApi.toExcel(reportData, outputPath)
-      else if (format === 'pptx') result = await exportApi.toPptx(reportData, outputPath)
+      if (format === 'pptx') result = await exportApi.toPptx(reportData, outputPath)
       else if (format === 'html') result = await exportApi.toHtml(reportData, outputPath)
 
       results.push({ format, ...result, outputPath })
