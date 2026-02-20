@@ -376,7 +376,7 @@ export default function SettingsPage() {
           {[
             ['Version', version],
             ['Stack', 'Electron 28 + React 18 + Material-UI 5'],
-            ['Exports', 'PDF (PDFKit) · Excel (ExcelJS) · PowerPoint (PptxGenJS) · HTML'],
+            ['Exports', 'PowerPoint (PptxGenJS) · HTML'],
             ['Email', 'Nodemailer · SMTP on-premise'],
             ['Planification', 'node-schedule'],
             ['Sécurité', 'PAT chiffré via electron.safeStorage (OS-level)'],
