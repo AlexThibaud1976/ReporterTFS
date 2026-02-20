@@ -67,10 +67,6 @@ app.whenReady().then(() => {
   scheduleHandlers.register(ipcMain)
 
   // ─── Handlers système ────────────────────────────────────────────────
-  ipcMain.handle('system:openFile', async (_, filePath) => {
-    const error = await shell.openPath(filePath)
-    return { success: !error, error: error || null }
-  })
   ipcMain.handle('system:getVersion', () => app.getVersion())
 
   // Démarrer le service de planification (Phase 4)
