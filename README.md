@@ -6,6 +6,7 @@ Application desktop Windows pour générer des rapports de test professionnels d
 
 - **Node.js** v18+ ([télécharger](https://nodejs.org))
 - **Git** (optionnel)
+- Accès à un **Azure DevOps Server** (on-premise) ou **Azure DevOps Services** (cloud) avec un PAT disposant au minimum des permissions _Test Plans (Read)_ et _Work Items (Read)_
 
 ## Installation
 
@@ -20,7 +21,7 @@ npm run dev
 ## Build (exécutable Windows)
 
 ```bash
-# Génère un .exe portable dans /release/
+# Génère un .exe portable ET un installeur NSIS dans /release/
 npm run build
 ```
 
@@ -66,8 +67,8 @@ TFSReporter/
 
 ## Utilisation
 
-1. **Connexion** : Entrer l'URL de votre Azure DevOps Server + PAT
-2. **Dashboard** : Sélectionner projet → plan de test → Analyser
+1. **Connexion** : Entrer l'URL ou le nom d'organisation ADO + PAT + version API → plusieurs profils de connexion sauvegardables
+2. **Dashboard** : Sélectionner projet → plan de test → filtrer par suite(s) → Analyser
 3. **Rapport** : Remplir les métadonnées → Choisir le format → Générer
 4. **Historique** : Consulter tous les rapports générés, filtrés par plan de test
 5. **Paramètres** : Configurer l'envoi email, la planification automatique et le template
@@ -76,24 +77,33 @@ TFSReporter/
 
 | Format | Description |
 |--------|-------------|
-| **PDF** | Rapport professionnel complet avec page de garde, KPIs, tableau des résultats |
-| **Excel** | Classeur multi-feuilles : Synthèse, Résultats, Suites, Bugs |
-| **PowerPoint** | Présentation comité de pilotage avec graphiques |
+| **PowerPoint** | Présentation comité de pilotage : couverture, KPIs, taux de réussite, résultats par statut, suites, traçabilité, bugs, conclusion |
 | **HTML** | Rapport interactif avec filtres, graphiques Chart.js, traçabilité et liens ADO |
 
+> Les services PDF et Excel restent disponibles en backend mais ne sont pas exposés dans l'interface actuelle.
+
 ## Fonctionnalités
+
+### Gestion des connexions
+- Plusieurs profils de connexion sauvegardables et commutables depuis la page de connexion
+- Supporte **Azure DevOps Cloud** (`dev.azure.com/<org>` ou nom d'organisation simple) et **ADO Server on-premise** (`http://server:8080/tfs/Collection`)
+- Sélection de la version API : `5.0` (recommandé Test Plans), `6.0` (ADO Server 2019+), `7.0` (ADO Server 2022)
+- PAT stocké chiffré localement (electron-store)
+- Bouton **Tester la connexion** avant de sauvegarder
+- Déconnexion et suppression de profil depuis l'interface
 
 ### Génération de rapports
 - Wizard en 3 étapes : métadonnées → format → génération
 - **Nommage horodaté** : `TFSReport_<ref>_YYYY-MM-DD_HH-MM-SS.<ext>` — plus de collision de noms si plusieurs rapports sont générés le même jour
-- Multi-format : exporter simultanément en PDF, Excel, PPTX et HTML
+- Formats disponibles : **PowerPoint** et **HTML** (multi-sélection possible)
+- Option **pièces jointes** : inclut les captures d'écran et attachements liés aux cas de test
 
-### Traçabilité (HTML uniquement)
-Le rapport HTML intègre automatiquement deux sections enrichies, récupérées depuis l'API ADO :
+### Traçabilité (HTML et PowerPoint)
+Les deux formats intègrent automatiquement des sections enrichies de traçabilité, récupérées depuis l'API ADO :
 
-- **Traçabilité des cas de test** : pour chaque test case, affiche les exigences liées (User Story / Requirement) ainsi que la chaîne hiérarchique Feature → Epic, chaque élément étant un lien cliquable vers ADO
+- **Traçabilité des cas de test** : pour chaque test case, affiche les exigences liées (User Story / Requirement) ainsi que la chaîne hiérarchique Feature → Epic, chaque élément étant un lien cliquable vers ADO (HTML) ou une diapositive dédiée (PPTX)
 - **Tableau des bugs** : si des bugs sont associés, affiche un tableau dédié avec état, sévérité, priorité, assigné, et un lien direct vers chaque bug dans ADO
-- La colonne Bugs du tableau des résultats affiche des liens 🐛 `#ID` cliquables
+- La colonne Bugs du tableau des résultats (HTML) affiche des liens 🐛 `#ID` cliquables
 
 > La traçabilité est récupérée en batch via `_apis/wit/workitems?$expand=relations`. En cas de permissions insuffisantes, la section est simplement omise sans bloquer la génération du rapport.
 
@@ -104,6 +114,9 @@ Le rapport HTML intègre automatiquement deux sections enrichies, récupérées 
 - Bouton **Ouvrir** par fichier (désactivé si le fichier n'existe plus sur le disque)
 - Suppression individuelle ou globale avec confirmation
 - Persistance locale chiffrée (200 entrées max, FIFO)
+
+### Filtrage par suite
+- Sur le Dashboard, sélectionner une ou plusieurs suites de test pour restreindre l'analyse et les métriques affichées
 
 ### Comparaison de plans
 - Page **Comparer plans** : compare les métriques de deux plans de test côte à côte
