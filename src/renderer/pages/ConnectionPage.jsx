@@ -20,7 +20,7 @@ const API_VERSIONS = [
   { value: '7.0', label: '7.0 (Azure DevOps Server 2022)' },
 ]
 
-const DEFAULT_FORM = { organisation: '', project: '', pat: '', apiVersion: '5.0' }
+const DEFAULT_FORM = { organisation: '', pat: '', apiVersion: '5.0' }
 
 export default function ConnectionPage() {
   const navigate = useNavigate()
@@ -48,7 +48,7 @@ export default function ConnectionPage() {
   }
 
   const handleConnect = async () => {
-    const result = await connectAndSave({ name: form.organisation, organisation: form.organisation, project: form.project, pat: form.pat, apiVersion: form.apiVersion })
+    const result = await connectAndSave({ name: form.organisation, organisation: form.organisation, pat: form.pat, apiVersion: form.apiVersion })
     if (result.success) { setTestResult({ success: true, message: result.message }); setTimeout(() => navigate('/dashboard'), 800) }
     else setTestResult({ success: false, message: result.message })
   }
@@ -62,7 +62,7 @@ export default function ConnectionPage() {
           <Box sx={{ width: 56, height: 56, borderRadius: 2, background: `linear-gradient(135deg, ${palette.blue}, ${palette.mauve})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, color: palette.base, mb: 3 }}>TFS</Box>
           <Typography variant="h2" sx={{ mb: 1 }}>TFSReporter</Typography>
           <Typography variant="body1" sx={{ color: palette.subtext1, mb: 3, lineHeight: 1.8 }}>Générez des rapports de test professionnels depuis votre Azure DevOps en quelques clics.</Typography>
-          {['Export PDF, Excel, PowerPoint', 'Métriques et graphiques', 'Alertes qualité automatiques', '100% sécurisé, PAT chiffré'].map((f) => (
+          {['Export PowerPoint & HTML interactif', 'Métriques et graphiques', 'Traçabilité & liens ADO', '100% sécurisé, PAT chiffré'].map((f) => (
             <Box key={f} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
               <CheckCircle sx={{ fontSize: 16, color: palette.green }} />
               <Typography variant="body2" sx={{ color: palette.subtext1 }}>{f}</Typography>
@@ -130,13 +130,6 @@ export default function ConnectionPage() {
                     <Typography variant="caption" sx={{ color: palette.overlay0, mt: 0.5, display: 'block' }}>
                       Nom de votre organisation ou URL complète. Visible dans l'URL: dev.azure.com/<strong>organisation</strong>
                     </Typography>
-                  </Box>
-
-                  {/* Projet */}
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.75 }}>Projet *</Typography>
-                    <TextField value={form.project} onChange={handleChange('project')} fullWidth placeholder="ex: DEMO2" size="small" />
-                    <Typography variant="caption" sx={{ color: palette.overlay0, mt: 0.5, display: 'block' }}>Nom de votre projet Azure DevOps</Typography>
                   </Box>
 
                   {/* PAT */}
