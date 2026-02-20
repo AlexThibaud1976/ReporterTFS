@@ -4,15 +4,17 @@ import {
   Grid, MenuItem, Select, FormControl, InputLabel, Stepper,
   Step, StepLabel, Alert, CircularProgress, Divider, Chip,
   FormControlLabel, Switch, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material'
 import { DatePicker } from '@mui/x-date-pickers'
 import {
   Slideshow, Code,
   Check, ArrowBack, ArrowForward, AttachFile,
+  Email as EmailIcon, Send,
 } from '@mui/icons-material'
 import { useReportStore } from '../store/reportStore'
 import { useAdoStore } from '../store/adoStore'
-import { exportApi, reportHistoryApi, adoApi } from '../api/ipcApi'
+import { exportApi, reportHistoryApi, adoApi, emailApi } from '../api/ipcApi'
 import { palette } from '../theme/theme'
 
 const STEPS = ['Métadonnées', 'Format d\'export', 'Génération']
@@ -33,6 +35,13 @@ export default function ReportBuilderPage() {
   const [validationError, setValidationError] = useState(null)
   const [includeAttachments, setIncludeAttachments] = useState(false)
 
+  // ─── Email ───────────────────────────────────────────────────────────────
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [emailTo, setEmailTo] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailResult, setEmailResult] = useState(null)
+
   const handleFormatToggle = (id) => {
     setSelectedFormats((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
@@ -52,6 +61,46 @@ export default function ReportBuilderPage() {
   }
 
   const handleBack = () => setActiveStep((s) => s - 1)
+
+  // ─── Email handlers ──────────────────────────────────────────────────────
+
+  const handleOpenEmailDialog = () => {
+    const appLabel = [metadata.applicationName, metadata.applicationVersion].filter(Boolean).join(' ')
+    setEmailSubject(`TFSReport — ${appLabel || 'Rapport'}${metadata.testEnvironment ? ` (${metadata.testEnvironment})` : ''}`)
+    setEmailResult(null)
+    setEmailTo('')
+    setEmailOpen(true)
+  }
+
+  const handleSendEmail = async () => {
+    setEmailSending(true)
+    setEmailResult(null)
+    try {
+      const smtp = await emailApi.loadConfig()
+      if (!smtp?.host) {
+        setEmailResult({ success: false, message: 'Aucun serveur SMTP configuré. Rendez-vous dans les Paramètres.' })
+        setEmailSending(false)
+        return
+      }
+      const recipients = emailTo.split(',').map((s) => s.trim()).filter(Boolean)
+      if (recipients.length === 0) {
+        setEmailResult({ success: false, message: 'Veuillez saisir au moins un destinataire.' })
+        setEmailSending(false)
+        return
+      }
+      const result = await emailApi.sendReport({
+        smtp,
+        to: recipients,
+        subject: emailSubject,
+        attachments: exportProgress.generatedFiles || [],
+      })
+      setEmailResult(result)
+      if (result.success) setTimeout(() => setEmailOpen(false), 2000)
+    } catch (err) {
+      setEmailResult({ success: false, message: `Erreur inattendue : ${err.message}` })
+    }
+    setEmailSending(false)
+  }
 
   const handleGenerate = async () => {
     if (!fullPlanData) return
@@ -97,11 +146,14 @@ export default function ReportBuilderPage() {
       results.push({ format, ...result, outputPath })
     }
 
+    const successfulPaths = results.filter((r) => r.success).map((r) => r.outputPath)
+
     setExportProgress({
       isExporting: false,
       progress: 100,
       step: 'Terminé !',
       lastExportPath: results[0]?.outputPath,
+      generatedFiles: successfulPaths,
     })
     setActiveStep(2)
 
@@ -273,24 +325,99 @@ export default function ReportBuilderPage() {
 
       {/* ─── Étape 2 : Génération ────────────────────────────────────── */}
       {activeStep === 2 && (
-        <Card>
-          <CardContent sx={{ p: 3, textAlign: 'center' }}>
-            {exportProgress.isExporting ? (
-              <>
-                <CircularProgress size={48} sx={{ mb: 2 }} />
-                <Typography variant="h4">{exportProgress.step}</Typography>
-              </>
-            ) : (
-              <>
-                <Check sx={{ fontSize: 64, color: palette.green, mb: 2 }} />
-                <Typography variant="h3" sx={{ mb: 1 }}>Rapport généré avec succès !</Typography>
-                <Typography variant="body2" sx={{ color: palette.subtext1 }}>
-                  Les fichiers ont été ouverts automatiquement.
-                </Typography>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardContent sx={{ p: 3, textAlign: 'center' }}>
+              {exportProgress.isExporting ? (
+                <>
+                  <CircularProgress size={48} sx={{ mb: 2 }} />
+                  <Typography variant="h4">{exportProgress.step}</Typography>
+                </>
+              ) : (
+                <>
+                  <Check sx={{ fontSize: 64, color: palette.green, mb: 2 }} />
+                  <Typography variant="h3" sx={{ mb: 1 }}>Rapport généré avec succès !</Typography>
+                  <Typography variant="body2" sx={{ color: palette.subtext1 }}>
+                    Les fichiers ont été ouverts automatiquement.
+                  </Typography>
+                  {exportProgress.generatedFiles?.length > 0 && (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, mt: 1.5 }}>
+                      {exportProgress.generatedFiles.map((f, i) => (
+                        <Chip key={i} label={f.split('\\').pop()} size="small" sx={{ fontSize: '0.7rem' }} />
+                      ))}
+                    </Box>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {!exportProgress.isExporting && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<EmailIcon />}
+                onClick={handleOpenEmailDialog}
+                disabled={!exportProgress.generatedFiles?.length}
+              >
+                Envoyer par email
+              </Button>
+            </Box>
+          )}
+
+          {/* ─── Dialog email ──────────────────────────────────────── */}
+          <Dialog open={emailOpen} onClose={() => setEmailOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EmailIcon sx={{ color: palette.blue }} />
+              Envoyer par email
+            </DialogTitle>
+            <DialogContent>
+              <TextField
+                label="Destinataire(s)"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                fullWidth
+                sx={{ mt: 1, mb: 2 }}
+                placeholder="prenom.nom@entreprise.com, autre@exemple.com"
+                helperText="Séparez plusieurs adresses par des virgules"
+                autoFocus
+              />
+              <TextField
+                label="Sujet"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                fullWidth
+                sx={{ mb: 2 }}
+              />
+              {exportProgress.generatedFiles?.length > 0 && (
+                <Box>
+                  <Typography variant="caption" sx={{ color: palette.overlay0 }}>Pièces jointes :</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                    {exportProgress.generatedFiles.map((f, i) => (
+                      <Chip key={i} label={f.split('\\').pop()} size="small" />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {emailResult && (
+                <Alert severity={emailResult.success ? 'success' : 'error'} sx={{ mt: 2 }}>
+                  {emailResult.message}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setEmailOpen(false)} variant="outlined">Annuler</Button>
+              <Button
+                onClick={handleSendEmail}
+                variant="contained"
+                disabled={!emailTo.trim() || emailSending}
+                startIcon={emailSending ? <CircularProgress size={16} /> : <Send />}
+              >
+                {emailSending ? 'Envoi en cours...' : 'Envoyer'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </>
       )}
 
       {/* ─── Navigation ───────────────────────────────────────────────── */}

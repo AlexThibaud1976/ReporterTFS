@@ -31,6 +31,7 @@ export const useReportStore = create((set, get) => ({
     step: '',
     progress: 0,
     lastExportPath: null,
+    generatedFiles: [],   // tous les chemins de fichiers générés avec succès
     error: null,
   },
 
@@ -88,6 +89,7 @@ export const useReportStore = create((set, get) => ({
         step: '',
         progress: 0,
         lastExportPath: null,
+        generatedFiles: [],
         error: null,
       },
     })
