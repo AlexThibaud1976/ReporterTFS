@@ -9,6 +9,9 @@
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite src/renderer --port 5173",
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "dev2": "concurrently \"npm run dev2:vite\" \"npm run dev2:electron\"",
+    "dev2:vite": "vite --config vite.config.v2.js",
+    "dev2:electron": "wait-on tcp:5174 && cross-env NODE_ENV=development RENDERER_PORT=5174 electron .",
     "build": "npm run build:vite && npm run build:electron",
     "build:vite": "vite build src/renderer --outDir ../../dist/renderer",
     "build:electron": "electron-builder",
@@ -22,9 +25,12 @@
     "@mui/x-date-pickers": "^6.18.0",
     "axios": "^1.6.0",
     "chart.js": "^4.4.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dayjs": "^1.11.10",
     "electron-store": "^8.1.0",
     "exceljs": "^4.4.0",
+    "lucide-react": "^0.575.0",
     "node-schedule": "^2.1.0",
     "nodemailer": "^6.9.0",
     "pdfkit": "^0.14.0",
@@ -33,14 +39,18 @@
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
+    "tailwind-merge": "^3.5.0",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.24",
     "concurrently": "^8.2.0",
     "cross-env": "^7.0.3",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
     "vite": "^5.0.0",
     "vite-plugin-electron": "^0.15.0",
     "wait-on": "^7.2.0"
@@ -52,11 +62,15 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
