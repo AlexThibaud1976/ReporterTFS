@@ -309,171 +309,282 @@ function KpiCard({ label, value, icon, color, subtext }) {
   )
 }
 
-// ─── Donut Chart (canvas natif) ────────────────────────────────────────────
+// ─── Donut Chart ───────────────────────────────────────────────────────────
 function DonutChart({ metrics }) {
   const canvasRef = useRef(null)
+  const wrapperRef = useRef(null)
 
-  useEffect(() => {
+  const draw = () => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    const W = canvas.width, H = canvas.height
-    const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.38, ri = r * 0.6
+    const wrapper = wrapperRef.current
+    if (!canvas || !wrapper) return
 
+    const dpr = window.devicePixelRatio || 1
+    const W = wrapper.clientWidth
+    // Hauteur = zone donut + légende dynamique
     const segments = [
-      { value: metrics.passed, color: '#a6e3a1', label: 'Réussis' },
-      { value: metrics.failed, color: '#f38ba8', label: 'Échoués' },
-      { value: metrics.blocked, color: '#f9e2af', label: 'Bloqués' },
+      { value: metrics.passed,      color: '#a6e3a1', label: 'Réussis' },
+      { value: metrics.failed,      color: '#f38ba8', label: 'Échoués' },
+      { value: metrics.blocked,     color: '#f9e2af', label: 'Bloqués' },
       { value: metrics.notExecuted, color: '#6c7086', label: 'Non exécutés' },
     ].filter(s => s.value > 0)
 
     const total = segments.reduce((a, s) => a + s.value, 0)
-    if (total === 0) return
+    if (!W || total === 0) return
 
+    const legendH = segments.length * 22 + 12
+    const donutSize = Math.min(W, 220)
+    const H = donutSize + legendH
+
+    canvas.width  = W * dpr
+    canvas.height = H * dpr
+    canvas.style.width  = W + 'px'
+    canvas.style.height = H + 'px'
+
+    const ctx = canvas.getContext('2d')
+    ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, W, H)
-    let angle = -Math.PI / 2
 
+    const cx = W / 2
+    const cy = donutSize / 2
+    const r  = donutSize * 0.40
+    const ri = r * 0.62
+    const gap = 0.025 // espace entre segments (rad)
+
+    // Ombre globale douce
+    ctx.shadowColor = 'rgba(0,0,0,0.4)'
+    ctx.shadowBlur = 12
+
+    let angle = -Math.PI / 2
     segments.forEach(seg => {
-      const sweep = (seg.value / total) * 2 * Math.PI
+      const sweep = (seg.value / total) * 2 * Math.PI - gap
       ctx.beginPath()
-      ctx.moveTo(cx, cy)
-      ctx.arc(cx, cy, r, angle, angle + sweep)
+      ctx.arc(cx, cy, r, angle + gap / 2, angle + gap / 2 + sweep)
+      ctx.arc(cx, cy, ri, angle + gap / 2 + sweep, angle + gap / 2, true)
       ctx.closePath()
       ctx.fillStyle = seg.color
       ctx.fill()
-      angle += sweep
+      angle += sweep + gap
     })
 
-    // Trou donut
+    ctx.shadowBlur = 0
+
+    // Fond du trou
     ctx.beginPath()
-    ctx.arc(cx, cy, ri, 0, 2 * Math.PI)
+    ctx.arc(cx, cy, ri - 2, 0, 2 * Math.PI)
     ctx.fillStyle = '#1e1e2e'
     ctx.fill()
 
-    // Texte centre
-    ctx.fillStyle = '#cdd6f4'
-    ctx.font = 'bold 22px sans-serif'
+    // Anneau intérieur décoratif
+    ctx.beginPath()
+    ctx.arc(cx, cy, ri - 2, 0, 2 * Math.PI)
+    ctx.strokeStyle = '#313244'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+
+    // Texte centre : taux
+    const rateColor = metrics.passRate >= 80 ? '#a6e3a1' : metrics.passRate >= 50 ? '#f9e2af' : '#f38ba8'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(metrics.passRate + '%', cx, cy - 8)
-    ctx.font = '11px sans-serif'
-    ctx.fillStyle = '#a6adc8'
-    ctx.fillText('réussite', cx, cy + 14)
+    ctx.fillStyle = rateColor
+    ctx.font = `bold ${Math.round(r * 0.52)}px Inter, sans-serif`
+    ctx.fillText(metrics.passRate + '%', cx, cy - r * 0.12)
+    ctx.fillStyle = '#6c7086'
+    ctx.font = `${Math.round(r * 0.25)}px Inter, sans-serif`
+    ctx.fillText('réussite', cx, cy + r * 0.22)
 
     // Légende
-    let legendY = H * 0.82
-    segments.forEach(seg => {
+    const legendTop = donutSize + 8
+    const colW = W / 2
+    segments.forEach((seg, i) => {
+      const col = i % 2
+      const row = Math.floor(i / 2)
+      const lx = col === 0 ? 8 : colW + 8
+      const ly = legendTop + row * 22
+
+      // Pastille
+      ctx.beginPath()
+      ctx.roundRect(lx, ly + 2, 10, 10, 3)
       ctx.fillStyle = seg.color
-      ctx.fillRect(12, legendY - 6, 10, 10)
+      ctx.fill()
+
       ctx.fillStyle = '#a6adc8'
-      ctx.font = '10px sans-serif'
+      ctx.font = '11px Inter, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText(`${seg.label}: ${seg.value}`, 28, legendY + 2)
-      legendY += 16
+      ctx.textBaseline = 'top'
+      ctx.fillText(`${seg.label}: ${seg.value}`, lx + 15, ly + 2)
     })
-  }, [metrics])
-
-  return <canvas ref={canvasRef} width={260} height={220} style={{ width: '100%', maxWidth: 260, display: 'block', margin: '0 auto' }} />
-}
-
-// ─── History Chart (canvas natif) ─────────────────────────────────────────
-function HistoryChart({ history }) {  const canvasRef = useRef(null)
+  }
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || history.length < 2) return
-    const ctx = canvas.getContext('2d')
-    const W = canvas.width, H = canvas.height
-    const pad = { top: 20, right: 20, bottom: 40, left: 40 }
-    const chartW = W - pad.left - pad.right
-    const chartH = H - pad.top - pad.bottom
+    draw()
+    const ro = new ResizeObserver(draw)
+    if (wrapperRef.current) ro.observe(wrapperRef.current)
+    return () => ro.disconnect()
+  }, [metrics])
 
+  return (
+    <Box ref={wrapperRef} sx={{ width: '100%' }}>
+      <canvas ref={canvasRef} style={{ display: 'block' }} />
+    </Box>
+  )
+}
+
+// ─── History Chart ─────────────────────────────────────────────────────────
+function HistoryChart({ history }) {
+  const canvasRef = useRef(null)
+  const wrapperRef = useRef(null)
+
+  const draw = () => {
+    const canvas = canvasRef.current
+    const wrapper = wrapperRef.current
+    if (!canvas || !wrapper || history.length < 2) return
+
+    const dpr = window.devicePixelRatio || 1
+    const W = wrapper.clientWidth
+    const H = 220
+
+    canvas.width  = W * dpr
+    canvas.height = H * dpr
+    canvas.style.width  = W + 'px'
+    canvas.style.height = H + 'px'
+
+    const ctx = canvas.getContext('2d')
+    ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, W, H)
 
-    // Grille horizontale
-    ctx.strokeStyle = '#313244'
+    const pad = { top: 28, right: 16, bottom: 36, left: 44 }
+    const cW = W - pad.left - pad.right
+    const cH = H - pad.top - pad.bottom
+
+    // ── Grille ──
+    ctx.strokeStyle = '#2a2a3e'
     ctx.lineWidth = 1
     ;[0, 25, 50, 75, 100].forEach(pct => {
-      const y = pad.top + chartH - (pct / 100) * chartH
+      const y = pad.top + cH - (pct / 100) * cH
       ctx.beginPath()
       ctx.moveTo(pad.left, y)
-      ctx.lineTo(pad.left + chartW, y)
+      ctx.lineTo(pad.left + cW, y)
       ctx.stroke()
-      ctx.fillStyle = '#6c7086'
-      ctx.font = '9px sans-serif'
+      ctx.fillStyle = '#585b70'
+      ctx.font = '10px Inter, sans-serif'
       ctx.textAlign = 'right'
-      ctx.fillText(pct + '%', pad.left - 4, y + 3)
+      ctx.textBaseline = 'middle'
+      ctx.fillText(pct + '%', pad.left - 6, y)
     })
 
-    // Ligne seuil 80%
-    const y80 = pad.top + chartH - (80 / 100) * chartH
-    ctx.strokeStyle = '#f9e2af44'
-    ctx.setLineDash([4, 4])
+    // ── Seuil 80% ──
+    const y80 = pad.top + cH - (80 / 100) * cH
+    ctx.save()
+    ctx.strokeStyle = '#f9e2af55'
+    ctx.lineWidth = 1
+    ctx.setLineDash([5, 5])
     ctx.beginPath()
     ctx.moveTo(pad.left, y80)
-    ctx.lineTo(pad.left + chartW, y80)
+    ctx.lineTo(pad.left + cW, y80)
     ctx.stroke()
-    ctx.setLineDash([])
+    ctx.restore()
 
-    // Courbe taux de réussite
-    const step = chartW / (history.length - 1)
-    const points = history.map((h, i) => ({
+    // Label seuil
+    ctx.fillStyle = '#f9e2af99'
+    ctx.font = '9px Inter, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText('Objectif 80%', pad.left + 4, y80 - 2)
+
+    // ── Points ──
+    const step = history.length > 1 ? cW / (history.length - 1) : cW
+    const pts = history.map((h, i) => ({
       x: pad.left + i * step,
-      y: pad.top + chartH - (h.passRate / 100) * chartH,
+      y: pad.top + cH - (Math.min(100, Math.max(0, h.passRate)) / 100) * cH,
       rate: h.passRate,
-      name: h.runName,
+      date: h.date,
     }))
 
-    // Zone remplie sous la courbe
+    // Aire sous la courbe (gradient)
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + cH)
+    grad.addColorStop(0, '#89b4fa33')
+    grad.addColorStop(1, '#89b4fa03')
+
     ctx.beginPath()
-    ctx.moveTo(points[0].x, pad.top + chartH)
-    points.forEach(p => ctx.lineTo(p.x, p.y))
-    ctx.lineTo(points[points.length - 1].x, pad.top + chartH)
+    ctx.moveTo(pts[0].x, pad.top + cH)
+    ctx.lineTo(pts[0].x, pts[0].y)
+    for (let i = 1; i < pts.length; i++) {
+      const cpx = (pts[i - 1].x + pts[i].x) / 2
+      ctx.bezierCurveTo(cpx, pts[i - 1].y, cpx, pts[i].y, pts[i].x, pts[i].y)
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pad.top + cH)
     ctx.closePath()
-    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH)
-    grad.addColorStop(0, '#89b4fa44')
-    grad.addColorStop(1, '#89b4fa00')
     ctx.fillStyle = grad
     ctx.fill()
 
-    // Ligne principale
+    // Ligne principale (bezier)
     ctx.beginPath()
+    ctx.moveTo(pts[0].x, pts[0].y)
+    for (let i = 1; i < pts.length; i++) {
+      const cpx = (pts[i - 1].x + pts[i].x) / 2
+      ctx.bezierCurveTo(cpx, pts[i - 1].y, cpx, pts[i].y, pts[i].x, pts[i].y)
+    }
     ctx.strokeStyle = '#89b4fa'
     ctx.lineWidth = 2.5
-    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
+    ctx.lineJoin = 'round'
     ctx.stroke()
 
-    // Points
-    points.forEach(p => {
+    // Points + labels
+    const maxLabels = Math.floor(cW / 52) // densité adaptative
+    const labelStep = Math.max(1, Math.ceil(pts.length / maxLabels))
+
+    pts.forEach((p, i) => {
       const color = p.rate >= 80 ? '#a6e3a1' : p.rate >= 50 ? '#f9e2af' : '#f38ba8'
+
+      // Halo
       ctx.beginPath()
-      ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI)
+      ctx.arc(p.x, p.y, 7, 0, 2 * Math.PI)
+      ctx.fillStyle = color + '30'
+      ctx.fill()
+
+      // Point
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4.5, 0, 2 * Math.PI)
       ctx.fillStyle = color
       ctx.fill()
       ctx.strokeStyle = '#1e1e2e'
       ctx.lineWidth = 1.5
       ctx.stroke()
 
-      // Label
+      // Label % au-dessus
       ctx.fillStyle = '#cdd6f4'
-      ctx.font = 'bold 10px sans-serif'
+      ctx.font = `bold 10px Inter, sans-serif`
       ctx.textAlign = 'center'
-      ctx.fillText(p.rate + '%', p.x, p.y - 10)
-    })
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(p.rate + '%', p.x, p.y - 9)
 
-    // Labels axe X
-    ctx.fillStyle = '#6c7086'
-    ctx.font = '9px sans-serif'
-    ctx.textAlign = 'center'
-    points.forEach((p, i) => {
-      if (history.length <= 6 || i % 2 === 0) {
-        const label = history[i].date ? new Date(history[i].date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : `R${i + 1}`
-        ctx.fillText(label, p.x, H - 8)
+      // Date axe X (densité adaptive)
+      if (i % labelStep === 0 || i === pts.length - 1) {
+        const label = p.date
+          ? new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+          : `R${i + 1}`
+        ctx.fillStyle = '#585b70'
+        ctx.font = '10px Inter, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        ctx.fillText(label, p.x, pad.top + cH + 8)
       }
     })
+  }
+
+  useEffect(() => {
+    draw()
+    const ro = new ResizeObserver(draw)
+    if (wrapperRef.current) ro.observe(wrapperRef.current)
+    return () => ro.disconnect()
   }, [history])
 
-  return <canvas ref={canvasRef} width={480} height={200} style={{ width: '100%', display: 'block' }} />
+  return (
+    <Box ref={wrapperRef} sx={{ width: '100%' }}>
+      <canvas ref={canvasRef} style={{ display: 'block' }} />
+    </Box>
+  )
 }
 
 // ─── Traceability Matrix ───────────────────────────────────────────────────
