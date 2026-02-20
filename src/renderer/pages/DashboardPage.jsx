@@ -349,7 +349,7 @@ function DonutChart({ metrics }) {
     const cy = donutSize / 2
     const r  = donutSize * 0.40
     const ri = r * 0.62
-    const gap = 0.025 // espace entre segments (rad)
+    const gap = segments.length > 1 ? 0.022 : 0 // pas de gap si un seul segment
 
     // Ombre globale douce
     ctx.shadowColor = 'rgba(0,0,0,0.4)'
@@ -386,12 +386,15 @@ function DonutChart({ metrics }) {
     const rateColor = metrics.passRate >= 80 ? '#a6e3a1' : metrics.passRate >= 50 ? '#f9e2af' : '#f38ba8'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
+    // Taille de police bornée pour tenir dans le trou (2*ri de diamètre)
+    const rateFontSize = Math.min(Math.round(r * 0.48), Math.round(ri * 0.58))
+    const subFontSize  = Math.round(rateFontSize * 0.50)
     ctx.fillStyle = rateColor
-    ctx.font = `bold ${Math.round(r * 0.52)}px Inter, sans-serif`
-    ctx.fillText(metrics.passRate + '%', cx, cy - r * 0.12)
+    ctx.font = `bold ${rateFontSize}px Inter, sans-serif`
+    ctx.fillText(metrics.passRate + '%', cx, cy - rateFontSize * 0.28)
     ctx.fillStyle = '#6c7086'
-    ctx.font = `${Math.round(r * 0.25)}px Inter, sans-serif`
-    ctx.fillText('réussite', cx, cy + r * 0.22)
+    ctx.font = `${subFontSize}px Inter, sans-serif`
+    ctx.fillText('réussite', cx, cy + rateFontSize * 0.42)
 
     // Légende
     const legendTop = donutSize + 8
