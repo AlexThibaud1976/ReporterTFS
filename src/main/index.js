@@ -32,8 +32,7 @@ function createWindow() {
 
   // ─── Chargement de l'UI ─────────────────────────────────────────────────
   if (isDev) {
-    const port = process.env.RENDERER_PORT || '5173'
-    mainWindow.loadURL(`http://localhost:${port}`)
+    mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'))
@@ -67,6 +66,10 @@ app.whenReady().then(() => {
   scheduleHandlers.register(ipcMain)
 
   // ─── Handlers système ────────────────────────────────────────────────
+  ipcMain.handle('system:openFile', async (_, filePath) => {
+    const error = await shell.openPath(filePath)
+    return { success: !error, error: error || null }
+  })
   ipcMain.handle('system:getVersion', () => app.getVersion())
 
   // Démarrer le service de planification (Phase 4)
