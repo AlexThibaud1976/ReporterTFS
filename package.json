@@ -11,7 +11,7 @@
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "build": "npm run build:vite && npm run build:electron",
     "build:vite": "vite build src/renderer --outDir ../../dist/renderer",
-    "build:electron": "electron-builder",
+    "build:electron": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "preview": "vite preview"
   },
   "dependencies": {
