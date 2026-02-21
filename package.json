@@ -7,10 +7,10 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
-    "dev:vite": "vite src/renderer --port 5173",
+    "dev:vite": "vite --port 5173",
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "build": "npm run build:vite && npm run build:electron",
-    "build:vite": "vite build src/renderer --outDir ../../dist/renderer",
+    "build:vite": "vite build",
     "build:electron": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "preview": "vite preview"
   },
