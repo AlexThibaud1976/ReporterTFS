@@ -71,11 +71,16 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
+    "extraResources": [
+      {
+        "from": "dist/renderer",
+        "to": "renderer"
+      }
+    ],
     "files": [
-      "dist/**/*",
       "src/main/**/*",
       "assets/**/*",
-      "node_modules/**/*"
+      "package.json"
     ],
     "directories": {
       "buildResources": "assets",
