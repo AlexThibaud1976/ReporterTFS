@@ -107,6 +107,7 @@ export default function ReportBuilderPage() {
 
     setExportProgress({ isExporting: true, progress: 0, error: null })
 
+    try {
     // Si des pièces jointes sont demandées, refaire un appel enrichi
     let planDataToUse = fullPlanData
     if (includeAttachments && selectedProject && selectedPlan) {
@@ -162,7 +163,7 @@ export default function ReportBuilderPage() {
     if (successfulResults.length > 0) {
       try {
         await reportHistoryApi.add({
-          planId: fullPlanData.plan?.id,
+          planId: String(fullPlanData.plan?.id ?? ''),
           planName: fullPlanData.plan?.name,
           project: fullPlanData.project || '',
           passRate: fullPlanData.metrics?.passRate,
@@ -175,6 +176,9 @@ export default function ReportBuilderPage() {
           files: successfulResults.map((r) => ({ format: r.format, path: r.outputPath })),
         })
       } catch (_) { /* Historique non bloquant */ }
+    }
+    } catch (err) {
+      setExportProgress({ isExporting: false, error: err.message, step: '' })
     }
   }
 
