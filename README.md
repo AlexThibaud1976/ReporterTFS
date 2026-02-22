@@ -39,8 +39,6 @@ TFSReporter/
 │   │   │   ├── AuthService.js    ← Gestion connexions & PAT
 │   │   │   ├── EmailService.js   ← Envoi de rapports par mail (Nodemailer)
 │   │   │   ├── ScheduleService.js← Planification automatique (node-schedule)
-│   │   │   ├── PdfService.js     ← Export PDF professionnel
-│   │   │   ├── ExcelService.js   ← Export Excel multi-feuilles
 │   │   │   ├── PptxService.js    ← Export PowerPoint comité
 │   │   │   └── HtmlService.js    ← Export HTML interactif + traçabilité
 │   │   └── store/
