@@ -51,7 +51,9 @@ export default function SettingsPage() {
 
   // ── Chargement initial ────────────────────────────────────────────────────
   useEffect(() => {
-    emailApi.loadConfig().then((cfg) => { if (cfg) setSmtp(cfg) }).catch(() => {})
+    // Sécurité : les paramètres SMTP ne sont jamais pré-remplis dans le formulaire.
+    // L'utilisateur doit saisir ses identifiants à chaque fois.
+    // La configuration sauvegardée est utilisée uniquement en interne pour l'envoi automatisé.
     scheduleApi.list().then(setSchedules).catch(() => {})
     templateApi.load().then((t) => { if (t) setTemplate(t) }).catch(() => {})
     systemApi.getVersion().then(setVersion).catch(() => {})

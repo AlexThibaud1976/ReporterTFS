@@ -14,6 +14,7 @@ class EmailService {
    */
   _createTransporter(config) {
     const port = parseInt(config.port, 10) || 587
+    const tlsEnabled = config.tls !== false
     return nodemailer.createTransport({
       host: config.host,
       port,
@@ -21,9 +22,11 @@ class EmailService {
       auth: config.user
         ? { user: config.user, pass: config.password }
         : undefined,
+      // Contrôle STARTTLS compatible nodemailer v8+
+      requireTLS: tlsEnabled && port !== 465,  // Force STARTTLS sur ports non-SSL
+      ignoreTLS: !tlsEnabled,                  // Désactive STARTTLS si TLS off
       tls: {
         rejectUnauthorized: false,  // On-premise : certificats auto-signés
-        starttls: config.tls !== false ? 'required' : 'never',
       },
       connectionTimeout: 10000,
       greetingTimeout: 10000,

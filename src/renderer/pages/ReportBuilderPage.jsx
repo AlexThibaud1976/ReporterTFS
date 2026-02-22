@@ -76,20 +76,15 @@ export default function ReportBuilderPage() {
     setEmailSending(true)
     setEmailResult(null)
     try {
-      const smtp = await emailApi.loadConfig()
-      if (!smtp?.host) {
-        setEmailResult({ success: false, message: 'Aucun serveur SMTP configuré. Rendez-vous dans les Paramètres.' })
-        setEmailSending(false)
-        return
-      }
       const recipients = emailTo.split(',').map((s) => s.trim()).filter(Boolean)
       if (recipients.length === 0) {
         setEmailResult({ success: false, message: 'Veuillez saisir au moins un destinataire.' })
         setEmailSending(false)
         return
       }
+      // Sécurité : le smtp n'est jamais chargé dans le renderer.
+      // Le main se charge de récupérer les credentials depuis le store.
       const result = await emailApi.sendReport({
-        smtp,
         to: recipients,
         subject: emailSubject,
         attachments: exportProgress.generatedFiles || [],

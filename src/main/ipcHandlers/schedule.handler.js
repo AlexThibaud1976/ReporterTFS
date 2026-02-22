@@ -33,7 +33,13 @@ function register(ipcMain) {
   })
 
   ipcMain.handle('email:sendReport', async (_, config) => {
-    return emailService.sendReport(config)
+    // Sécurité : le smtp (avec mot de passe) est chargé depuis le store côté main,
+    // jamais transmis depuis le renderer.
+    const smtp = emailService.loadConfig()
+    if (!smtp?.host) {
+      return { success: false, message: 'Aucun serveur SMTP configuré. Rendez-vous dans les Paramètres.' }
+    }
+    return emailService.sendReport({ ...config, smtp })
   })
 
   ipcMain.handle('email:saveConfig', async (_, config) => {
@@ -41,7 +47,10 @@ function register(ipcMain) {
   })
 
   ipcMain.handle('email:loadConfig', async () => {
-    return emailService.loadConfig()
+    const config = emailService.loadConfig()
+    // Sécurité : le mot de passe n'est jamais renvoyé au renderer
+    const { password: _omitted, ...safeConfig } = config
+    return safeConfig
   })
 
   // ─── Templates de rapport ─────────────────────────────────────────────
