@@ -1,12 +1,8 @@
 const axios = require('axios')
-const https = require('https')
 const authService = require('./AuthService')
 
 // La version API est récupérée dynamiquement depuis la connexion active
 const getApiVersion = () => authService.getApiVersion()
-
-// Agent HTTPS pour certificats auto-signés (on-premise)
-const httpsAgent = new https.Agent({ rejectUnauthorized: false })
 
 /**
  * AdoService — Client API Azure DevOps Server
@@ -25,7 +21,7 @@ class AdoService {
       const response = await axios.get(`${baseUrl}/${path}`, {
         params: { 'api-version': getApiVersion(), ...params },
         headers,
-        httpsAgent,
+        httpsAgent: authService.getHttpsAgent(baseUrl),
         timeout: 30000,
       })
       return response.data
@@ -494,7 +490,7 @@ class AdoService {
     const headers = authService.buildAuthHeaders()
     const response = await axios.get(url, {
       headers,
-      httpsAgent,
+      httpsAgent: authService.getHttpsAgent(url),
       responseType: 'arraybuffer',
       timeout: 30000,
     })

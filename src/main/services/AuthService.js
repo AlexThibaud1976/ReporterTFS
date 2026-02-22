@@ -2,7 +2,8 @@ const axios = require('axios')
 const https = require('https')
 const { store, encryptPat, decryptPat } = require('../store/store')
 
-const httpsAgent = new https.Agent({ rejectUnauthorized: false })
+// Agent HTTPS uniquement pour les serveurs on-premise avec certificats auto-signés
+const onPremiseHttpsAgent = new https.Agent({ rejectUnauthorized: false })
 
 /**
  * AuthService — Gestion des connexions Azure DevOps
@@ -14,11 +15,38 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false })
 class AuthService {
 
   // ─── Détection cloud vs on-premise ─────────────────────────────────────
+
+  /**
+   * Retourne true si l'organisation est hébergée sur Azure DevOps cloud.
+   * Utilise un parsing d'URL strict pour éviter les contournements via substring.
+   */
   isCloud(organisation) {
-    // Si l'utilisateur saisit "BCEE-QA" ou "dev.azure.com/BCEE-QA" → cloud
-    return !organisation.startsWith('http://') && !organisation.startsWith('https://dev.azure.com') 
-      ? true  // Nom simple = cloud
-      : organisation.includes('dev.azure.com')
+    if (!organisation.startsWith('http://') && !organisation.startsWith('https://')) {
+      return true // Nom simple (ex: "BCEE-QA") → cloud
+    }
+    try {
+      const url = new URL(organisation)
+      return url.hostname === 'dev.azure.com'
+    } catch {
+      return true // URL malformée → traité comme cloud par défaut
+    }
+  }
+
+  /**
+   * Retourne l'agent HTTPS approprié selon le type de connexion :
+   * - Cloud (dev.azure.com) : agent par défaut (validation SSL activée)
+   * - On-premise : agent tolérant les certificats auto-signés
+   */
+  getHttpsAgent(baseUrl) {
+    try {
+      const url = new URL(baseUrl)
+      if (url.hostname === 'dev.azure.com') {
+        return undefined // Utilise la validation SSL par défaut
+      }
+    } catch {
+      // URL invalide, on-premise par défaut
+    }
+    return onPremiseHttpsAgent
   }
 
   /**
@@ -28,16 +56,22 @@ class AuthService {
    */
   buildBaseUrl(organisation, apiVersion = '6.0') {
     const org = organisation.trim().replace(/\/$/, '')
-    
-    // Cloud : nom simple ou URL complète dev.azure.com
-    if (!org.startsWith('http')) {
-      // Nom d'organisation simple ex: "BCEE-QA"
+
+    // Nom d'organisation simple (ex: "BCEE-QA") → cloud
+    if (!org.startsWith('http://') && !org.startsWith('https://')) {
       return `https://dev.azure.com/${org}`
     }
-    if (org.includes('dev.azure.com')) {
-      // URL complète cloud ex: "https://dev.azure.com/BCEE-QA"
-      return org
+
+    // URL complète : parsing strict pour identifier le cloud
+    try {
+      const url = new URL(org)
+      if (url.hostname === 'dev.azure.com') {
+        return org // Cloud confirmé
+      }
+    } catch {
+      // URL malformée, on laisse passer tel quel
     }
+
     // On-premise ex: "http://monserveur:8080/tfs/DefaultCollection"
     return org
   }
@@ -136,7 +170,7 @@ class AuthService {
         params: { '$top': 1, 'api-version': apiVersion },
         headers: { Authorization: authHeader, Accept: 'application/json' },
         timeout: 10000,
-        httpsAgent,
+        httpsAgent: this.getHttpsAgent(baseUrl),
       })
 
       return {
