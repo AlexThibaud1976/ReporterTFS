@@ -1,5 +1,15 @@
 # TFSReporter 🚀
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&logo=windows&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-40-47848f?style=flat-square&logo=electron&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=black)
+![MUI](https://img.shields.io/badge/MUI-v5-007fff?style=flat-square&logo=mui&logoColor=white)
+![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-compatible-0078d7?style=flat-square&logo=azuredevops&logoColor=white)
+[![GitHub stars](https://img.shields.io/github/stars/AlexThibaud1976/ReporterTFS?style=flat-square)](https://github.com/AlexThibaud1976/ReporterTFS/stargazers)
+[![GitHub last commit](https://img.shields.io/github/last-commit/AlexThibaud1976/ReporterTFS?style=flat-square)](https://github.com/AlexThibaud1976/ReporterTFS/commits/main)
+
 Application desktop Windows pour générer des rapports de test professionnels aux formats PowerPoint et HTML depuis Azure DevOps Server.
 
 ## Prérequis
