@@ -1,6 +1,6 @@
 # TFSReporter 🚀
 
-Application desktop Windows pour générer des rapports de test professionnels depuis Azure DevOps Server.
+Application desktop Windows pour générer des rapports de test professionnels aux formats PowerPoint et HTML depuis Azure DevOps Server.
 
 ## Prérequis
 
