@@ -546,8 +546,15 @@ class AdoService {
 
     const allSuitesRaw = await this.getTestSuites(project, planId)
 
-    // Exclure la suite racine du plan (elle porte le même nom que le plan et n'a pas de cas de test directs)
-    const suites = allSuitesRaw.filter(s => s.id !== plan.rootSuiteId)
+    // Exclure la suite racine du plan :
+    // - par rootSuiteId si disponible (comparaison souple via == pour éviter les mismatch int/string)
+    // - sinon, la suite racine est celle sans parentSuiteId (null/undefined)
+    const rootSuiteId = plan.rootSuiteId
+    const suites = allSuitesRaw.filter(s => {
+      if (rootSuiteId != null && String(s.id) === String(rootSuiteId)) return false
+      if (rootSuiteId == null && s.parentSuiteId == null) return false
+      return true
+    })
 
     // Si un filtre de suites est actif, ne charger les TCs que pour les suites sélectionnées
     const normalizedFilter = filterSuiteIds.map(Number)
