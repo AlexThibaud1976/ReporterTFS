@@ -544,7 +544,10 @@ class AdoService {
     const plan = plans.find((p) => p.id === parseInt(planId))
     if (!plan) throw new Error('Plan de test ' + planId + ' introuvable')
 
-    const suites = await this.getTestSuites(project, planId)
+    const allSuitesRaw = await this.getTestSuites(project, planId)
+
+    // Exclure la suite racine du plan (elle porte le même nom que le plan et n'a pas de cas de test directs)
+    const suites = allSuitesRaw.filter(s => s.id !== plan.rootSuiteId)
 
     // Si un filtre de suites est actif, ne charger les TCs que pour les suites sélectionnées
     const normalizedFilter = filterSuiteIds.map(Number)
@@ -615,7 +618,7 @@ class AdoService {
     return {
       plan,
       suites: suitesWithCases,
-      allSuites: suites,           // métadonnées de toutes les suites du plan (sans TCs)
+      allSuites: allSuitesRaw,     // métadonnées de toutes les suites du plan, y compris root (sans TCs)
       filteredSuiteIds: normalizedFilter.length > 0 ? normalizedFilter : null,
       suiteMetrics,
       runs,
